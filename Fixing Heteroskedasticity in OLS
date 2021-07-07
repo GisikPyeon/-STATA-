@@ -1,0 +1,56 @@
+*** Fixing Heteroskedasticity in OLS
+
+*** 울드릿지 데이터를 불러옵니다.
+
+bcuse wage1
+
+reg wage educ exper female 
+
+hettest, rhs fstat 
+/* right-hand sides의 변수들이 heteroskedasicity한지 여부를 F-stat를 통해 확인 
+기각 하는 경우에는 not constant variance */
+
+/* [1] 종속변수를 로그화 하는 경우에는, 이러한 이분산성을 완화할 수가 있음. y의 분포 범위가 작아지기 떄문임 */
+reg lwage educ exper female
+hettest, rhs fstat 
+
+/* [2] 오차항이 특정 독립변수에 의해서 결정된다고 믿는 경우에는 해당 독립변수(i.e., educ)로 나눠준 값으로 회귀 하는 경우,
+Var(ui)=sigma^2라고 해석할 수가 있음 */
+
+
+gen wage_w=wage/educ^0.5
+gen educ_w=educ/educ^0.5
+gen exper_w=exper/educ^0.5	
+gen female_w=female/educ^0.5
+
+
+///* 노가다가 머리가 아프기 때문에 double loop로 구현해봄. 예를 들어 var_2는 educ로 가중치를 준 변수로 형성 */
+
+forvalues i=1/4 {
+	foreach var of varlist wage educ exper female {
+		gen `var'_`i'=`var'/(`var'^0.5)
+		}
+}
+
+forvalues i=1/4 {
+	reg wage_`i' educ_`i' exper_`i' female_`i'
+		hettest, rhs fstat
+} /* 모든 가중치 모델에 대해서 어떤 게 제일 적합한지? 알고보니까 어떤 걸 하든지 모두 적합하지 않은 것을 확인할 수가 있음  */
+
+
+reg wage_w educ_w exper_w female_w 
+hettest, rhs fstat /* p-b 테스트로 인해 안 좋은 모형 */
+
+/* [3] [aw] 옵션으로 테뉴어 변수에 대하여  weighted least squares */
+reg wage educ exper female [aw=1/tenure] /* tenure에 따라서 error term */
+hettest, rhs fstat
+
+reg wage educ exper female, robust 
+eststo robust /* estimate store, estimate out */
+
+reg wage educ exper female
+eststo ols
+
+estout
+estout robust ols, cells(b(star) se)	/* 해당 값이 크게 다르지 않다는 것을 확인 */ 
+
