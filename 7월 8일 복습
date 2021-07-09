@@ -1,0 +1,18 @@
+ egen ilofc=rowmax(fc087 fc098) /* rowmax는 더 큰 스칼라값을 선택해라 */  
+  g leftexec=(dpi_erlc_QOG==3 | dpi_gprlc1_QOG==3) /* 새로운 변수를 만들어주네. 논리값을 통해서 0 또는 1로 지정해준다 */
+cmp setup	/* cmp는? 제 생각에는? 도구변수를 사용하면, 오차항을 가장 줄이는 방식으로 회귀를 돌리게 프로그램을 정리한다 */ /* ssc install 해서 추가적으로 다운
+  받아야 한다 */ 
+  
+  g ig2=(i>`r(p50)')	/* r(p50)를 백분위 50퍼센트, raw를 의미한다. https://www.stata.com/statalist/archive/2010-02/msg00960.html */ /* winzor 데이터도 존재한다 */
+  collapse (mean)idx *_idx idx_*, by(ig1 ig2 year) /* collapse에서 stadard deviation*/ /*비슷한 연도 데이터들을 모두 다 가져오는 형식으로 한다 */ 
+  drop if ig1==0	
+  
+  Figure 2: The differential impact of IMF labor conditions exposure on labor rights
+  preserve 	/* preserve가 중간 저장상태: 다시 restore를 누르면 이전의 상태로 돌아가요. 
+  예를 들어서 by sort 하기 이전의 상태로 돌아감 */
+  
+  mat Mstat`l'=J(5,3,0)		/* 5 바이 3 행렬을 만들어라 */ 
+  
+  mat B=e(b)		/* e(S) */ 
+	mat S=e(V)		/* b는 계수값, V는 correlation matrix */ 
+  
