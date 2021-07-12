@@ -1,0 +1,374 @@
+encode 학년도학기, gen(year) 
+encode 개설대학, gen(major) 
+encode 학년, gen(grade)
+encode 학정번호, gen(class)
+encode 분반, gen(subclass)
+encode 학점, gen(credit)
+encode 수정종별, gen(elec)
+encode 평가방식, gen(ab)
+rename 평균 gpa
+encode 수정교번, gen(prof)
+encode 강의언어, gen(lang)
+encode 온라인강의, gen(online)
+encode 캠퍼스, gen(campus)
+rename 수강인원 size
+
+destring 문항1, gen(satis)
+destring 문항21, gen(feed)
+destring 문항22, gen(challenge)
+destring 문항3, gen(flow)
+destring 문항4, gen(develop)
+
+** 역량의  축적정도 변환
+foreach i of num 1/4 {
+gen know`i'=substr(문항5`i', 4, 6)
+replace know`i' = subinstr(know`i', "(", "",.) 
+destring know`i', gen(k`i')
+}
+
+** 응답률을 측정
+foreach i of num 1/4 {
+	gen res`i'=substr(문항5`i', 8, 10)
+	replace res`i' = subinstr(res`i', "(", "",.) 
+	replace res`i' = subinstr(res`i', ")", "",.)
+	destring res`i', gen(r`i')
+}
+
+*** 생년측정
+gen birth=substr(생년월일, 1, 4)
+gen agedate=substr(학년도학기, 1, 4)
+destring birth, gen(b)
+destring agedate, gen(a)
+gen age = a - b
+
+*******************연구력 측정************************
+moss 연구업적, match("([0-9]+)")  regex
+encode _match, gen(rd) /* research distance */
+/* 학기에서 연도 만들어주기 */
+gen y=substr(학년도학기, 1, 4)
+gen yy = real(y)
+gen match = real(_match1)
+gen prod = .
+replace prod = abs(yy-match) if _pos1==1
+
+/* 최근 3년 간 우수 연구자로 선정된 사람들의 아웃풋을 2으로 코딩함. 
+과거에 선정된 선정된 사람들의 아웃풋을 1로, 아무런 선정이 없는 경우 0로 코딩								
+{Y0-Y1} = proxies for the research productivities */
+
+gen output = 0
+replace output = 2 if prod == 0 | prod == 1 | prod == 2 | prod ==3
+replace output = 1 if prod == 4 | prod == 5 | prod == 6 | prod ==7 | prod == 8 | prod == 9 | prod == 10 | prod ==11 | prod ==12
+********************************************************
+
+
+
+
+
+
+
+																/** research 
+																	gen research = 0
+																	encode 연구업적, gen(re)
+																	replace research = 1 if re > 1 **/
+
+** 직위
+encode 직위, gen(rank)
+gen pro = 0
+replace pro = 1 if rank ==1
+gen asso = 0
+replace asso = 1 if rank ==3
+gen assist = 0
+replace assist = 1 if rank ==7
+
+*** 회귀1: 역량강화에 영향을 미치는 요인은?
+gen comp = (k1+k2+k3+k4)/4
+
+
+*************** Homoskedasticity**********************
+Heteroskedasticity Test using Breush-Pagan LM Test
+reg comp output feed challenge flow develop age rank major gpa grade ab credit lang elec size online
+hettest /* H0 (homoskedasticity) is rejected. We need robusted standard error or take a natural log on the outcome variable.  */
+**** Heteroskedasticity -> 자연로그, r option 추가
+
+****************AR(1)*************************
+egen id=concat(class prof)
+destring id, gen(unit)
+egen iid=concat(unit subclass)
+destring iid, gen(un)			     /* 당연히 RC101 같은 수업들은 소거될 수밖에 없어. 아니면 한명의 교수가 동일한 수업 여러개를 맡는 경우에는 (미시경제원론) 다시 또 소거될 가능성 있음 
+									  이것은 과거 행정자료를 내가 전수조사할 수가 없기 때문에 소거할 필요가 있음 */
+									 /* vce(cluster clustvar) specifies that the standard errors allow for intragroup correlation,
+									 relaxing the usual requirement that the observations be independent.
+									 That is to say, the observations are independent across groups (clusters) but not necessarily within groups. */
+									 /* Example 3 under -xtreg- entry in Stata 13.1 .pdf manual, recommends -vce(robust) for dealing with suspected heteroskedasticity or within panel autocorrelation in the idiosyncratic error term. However, the subsequent Technical note states: "Clustering on the panel variable produces an estimator of the VCE that
+									 is robust to cross-sectional heteroskedasticity and within-panel (serial) correlation..." */
+																
+preserve 
+duplicates drop un year, force
+xtset un year
+gen ln_satis = ln(satis)
+xtserial ln_satis output feed challenge flow develop age rank major gpa grade ab credit lang elec size online 
+restore
+***********************************************
+
+
+********Pooled OLS보다 Fixed Effect가 나음 -> F-test 
+******* Random Effect보다 Fixed Effect가 나음 -> Hausman test
+preserve
+duplicates drop un year, force
+tsset un year
+quietly xtreg ln_satis output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, fe
+quietly estimates store fe
+quietly xtreg ln_satis output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, re
+quietly estimates store re
+hausman fe re
+restore
+/* diagnostic test? chi2<0 ==> model fitted on these
+data fails to meet the asymptotic
+assumptions of the Hausman test;
+see suest for a generalized test */
+***************************************************
+
+
+****** 회귀1+2 : 만족도와 역량강화에 영향을 미치는 요인은? 
+preserve 
+duplicates drop un year, force
+xtset un year
+						*** 아주 강하게 통제를 많이 한 모형
+xtreg ln_satis output feed challenge flow develop age pro major gpa grade ab credit lang elec size online i.year, fe vce(robust)
+xtreg ln_comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online i.year, fe vce(robust)
+xtreg ln_comp output satis feed challenge flow develop age pro major gpa grade ab credit lang elec size online i.year, fe vce(robust)
+estimates store m1
+generate sample = e(sample)
+sum ln_satis ln_comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online if e(sample)
+restore
+
+						**** BEST: 덜 표준오차를 줄인 모형
+preserve
+duplicates drop un year, force
+xtset un year
+xtreg ln_satis output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, fe r
+xtreg ln_comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, fe r
+xtreg ln_comp output satis feed challenge flow develop age pro major gpa grade ab credit lang elec size online , fe r
+xtreg satis output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, fe r
+xtreg comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, fe r
+xtreg comp output satis feed challenge flow develop age pro major gpa grade ab credit lang elec size online , fe r
+estimates store m1
+generate sample = e(sample)
+sum satis comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online if e(sample)
+							/* i.year 넣으니까 답이 안나온다 */
+xtreg ln_satis output feed challenge flow develop age pro major gpa grade ab credit lang elec size online i.year, fe r
+xtreg ln_comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online i.year, fe r
+
+restore
+
+							**** 비교를 위해서 랜덤 효과를 돌린 모형
+preserve
+duplicates drop un year, force
+xtset un year
+xtreg ln_satis output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, re r
+xtreg ln_comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, re r
+xtreg ln_comp output satis feed challenge flow develop age pro major gpa grade ab credit lang elec size online , re r
+estimates store m1
+generate sample = e(sample)
+sum ln_satis ln_comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online if e(sample)
+restore
+
+***** ANOVA test: 우수강의자는 다른 교육자인가?
+preserve
+*** 세 집단 간의 평균 차이가 있는지 검증한다. 
+replace output = 1 if output ==2
+oneway r1 output,  tabulate scheffe
+oneway r2 output,  tabulate scheffe
+oneway r3 output,  tabulate scheffe
+oneway r4 output,  tabulate scheffe
+
+replace output = 1 if output ==2
+ttest r1, by(output)
+ttest r2, by(output)
+ttest r3, by(output)
+ttest r4, by(output)
+restore
+********강한 차이가 있다***********************************
+
+
+
+reg comp i.research feed challenge flow develop age rank major gpa grade ab credit lang elec size online i.year if size < 1000
+
+*** 데이터 전처리가 필요함!
+
+** 결론: satisfaction과 competence에서 미치는 경로가 각각 다르다!
+reg satis i.research feed challenge flow develop age pro major gpa grade ab credit lang elec size online if size <1000
+reg satis i.research feed challenge flow develop age pro major gpa grade ab credit lang elec size online if size <1000
+
+*** OLS 검정 해보기 
+gen ln_satis = ln(satis)
+gen ln_comp = ln(comp)
+reg ln_satis i.research feed challenge flow develop age rank major gpa grade ab credit lang elec size online if size <1000, vce(robust)
+reg ln_comp i.research feed challenge flow develop age rank major gpa grade ab credit lang elec size online if size <1000, vce(robust)
+hettest
+
+foreach i of num 1/4 {
+	ttest k`i' if e(sample), by(research) 
+}
+
+xtreg ln_satis i.research feed challenge flow develop age rank major gpa grade ab credit lang elec size online, re
+xtreg ln_comp i.research feed challenge flow develop age rank major gpa grade ab credit lang elec size online, re
+
+
+*** Hausman Test to Choose Fixed or Random 
+
+
+
+*** Research 변수에서 숫자만 추출해서 이것을 연구성과 지표로 삼자! 
+preserve
+
+moss 연구업적, match("([0-9]+)")  regex
+encode _match, gen(rd) /* research distance */
+/* 학기에서 연도 만들어주기 */
+gen y=substr(학년도학기, 1, 4)
+gen yy = real(y)
+gen match = real(_match1)
+gen prod = .
+replace prod = abs(yy-match) if _pos1==1
+
+/* 최근 3년 간 우수 연구자로 선정된 사람들의 아웃풋을 2으로 코딩함. 
+									과거에 선정된 선정된 사람들의 아웃풋을 1로, 아무런 선정이 없는 경우 0로 코딩
+									
+{Y0-Y1} = proxies for the research productivities */
+
+gen output = 0
+replace output = 2 if prod == 0 | prod == 1 | prod == 2 | prod ==3
+replace output = 1 if prod == 4 | prod == 5 | prod == 6 | prod ==7 | prod == 8 | prod == 9 | prod == 10 | prod ==11 | prod ==12
+
+
+///// 하나의 수업이 단위고, 그 수업에 연구력이 뛰어난 교수가 들어오는지 여부를 중심으로 봄 *** 동일 수업, 동일 교수군인 경우를 만들어내는 게 낫지 않나? ***
+*** RC101같은 수업은 동일한 수업에 동일한 교수가 한 학기에 여러개 열리기 때문에 이는 제거해서 볼 필요가 있음 e.g., 김미현 교수님이 동일한 수업을 여러 개 하는 경우 
+preserve
+replace output = 1 if output ==2
+duplicates drop un year, force
+xtset un year
+xtreg ln_comp output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, fe
+xtreg ln_comp output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, re
+xtreg ln_comp output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, fe
+xtreg ln_comp output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, re
+xtreg ln_satis output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, fe
+xtreg ln_satis output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, re 
+xtreg ln_comp output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, fe
+xtreg ln_comp output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, re
+restore
+
+preserve
+replace output = 1 if output ==2
+duplicates drop un year, force
+xtset un year
+xtreg ln_satis output feed, fe
+xtreg ln_comp output feed, fe
+restore
+
+/////
+									
+** output 반영한 값으로 고정회귀 
+preserve 
+duplicates drop un year, force
+xtset un year
+xtreg ln_satis output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, fe
+xtreg ln_satis output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, re
+quietly xtreg ln_satis i.output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, fe
+quietly estimates store fe
+quietly xtreg ln_satis i.output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, re
+quietly estimates store re
+hausman fe re
+xtreg ln_comp output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, fe
+xtreg ln_comp output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, re
+
+xtreg ln_comp output feed challenge flow develop age rank major, fe
+
+restore
+
+* 그냥 아웃풋을 기준으로 어떤 교수가 담당하는지를 기준으로 보자! 
+															
+
+
+/* 최근 3년 간 우수 연구자로 선정된 사람들의 아웃풋을 3으로 코딩함. 
+									최근 2년 간 우수 연구자로 선정된 사람들의 아웃풋을 2로, 아무런 선정이 없는 경우 1로 코딩 */
+
+restore
+
+
+/// 내가 고안한 매크로로 한번 돌려볼까? 어떤 통제변수가 필요해? 
+preserve 
+duplicates drop un year, force
+xtset un year
+local x output feed challenge flow develop
+foreach e of varlist output feed challenge flow develop age rank gpa ab lang size online {
+	foreach d of varlist output feed challenge flow develop age rank gpa ab lang size {
+	foreach c of varlist output feed challenge flow develop age rank gpa ab lang {
+	foreach b of varlist output feed challenge flow develop age rank gpa ab {
+	foreach a of varlist output feed challenge flow develop age rank gpa {
+	xtreg ln_satis `x' `a' `b' `c' `d' `e' , fe noomitted
+   }
+   }
+   }
+   }
+   }
+}
+restore
+///
+
+
+/// 내가 고안한 매크로로 한번 돌려볼까? 어떤 통제변수가 필요해? 
+preserve 
+duplicates drop un year, force
+xtset un year
+local x output feed challenge flow develop
+foreach e of varlist output feed challenge flow develop age rank gpa ab lang size online {
+	foreach d of varlist output feed challenge flow develop age rank gpa ab lang size {
+	foreach c of varlist output feed challenge flow develop age rank gpa ab lang {
+	foreach b of varlist output feed challenge flow develop age rank gpa ab {
+	foreach a of varlist output feed challenge flow develop age rank gpa {
+	xtreg ln_comp `x' `a' `b' `c' `d' `e' , fe robust noomitted
+   }
+   }
+   }
+   }
+   }
+}
+restore
+///
+
+
+preserve 
+duplicates drop un year, force
+tsset un year
+xtreg ln_satis output feed challenge flow develop age rank major gpa grade ab credit lang elec size online
+xtcsd, pesaran abs 
+/* Pesaran's test of cross-sectional independence. 
+If the p-value is less than 5%, then there is a cross-sectional dependence. 좋다! 
+Panel data can be subject to pervasive cross-sectional dependence,
+whereby all units in the same cross-section are correlated.
+This is usually attributed to the effect of some unobserved common factors,
+common to all units and affecting each of them, although possibly in different ways. */
+preserve 
+duplicates drop un year, force
+xtset un year
+xtserial ln_satis output feed challenge flow develop age rank major gpa grade ab credit lang elec size online 
+restore
+/* Wooldridge test for autocorrelation. H0: no first-rder autorcorrleation. *
+xttest3 ln_satis output feed challenge flow develop age rank major gpa grade ab credit lang elec size online 
+/* Modified Wald test for groupwise heteroskedasticity 
+If the p-value is less than 5%, we assume that this model suffers from heteroskedasticity.*/ 
+
+** In this example, we specified the first-order autocorrelation and groupwise heteroskedasticity. 
+** Alternatively, we should use FGLS model. ex) xtgls DV IV. No homoskedasticity and no first-order autocorrelation.  
+
+
+*** Prob > F          =     0.0000 이면 F test를 통해서 pooled OLS 보다 fixed effect가 낫다는 거 알림
+
+restore
+///
+
+
+
+
+
+
