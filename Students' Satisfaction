@@ -15,10 +15,56 @@ rename 수강인원 size
 
 destring 문항1, gen(satis)
 destring 문항21, gen(feed)
-destring 문항22, gen(challenge)
-destring 문항3, gen(flow)
-destring 문항4, gen(develop)
+destring 문항22, gen(engage)
+destring 문항3, gen(motivate)
+destring 문항4, gen(flow)
+destring 문항5, gen(develop)
 
+******* data cleaning *******************
+recode size (0=.) // "0": 수강인원 0명
+recode ab (999=.) // "999": 오류값 
+recode gpa (0=.) (999=.) (9999=.) // "999": 오류값, "9999": p/np과목 점수(0)
+recode grade (9=.) (999=.) // "9": 9학년(오류), "999": 오류값
+* recode q_avg (0=.) // "0": 강의평가 점수 평균 0점(오류)
+recode satis (0=.)
+recode feed (0=.)
+recode engage (0=.)
+recode motivate (0=.)
+recode flow (0=.)
+recode develop (0=.)
+****************** 전공코딩이 좀 복잡함 *************
+
+	gen kyo = 0
+
+	gen hp = 0
+foreach num in 19 28 {  /*생명시스템, 이과대*/
+	replace hp = 1 if major == `num' 
+	}
+
+	gen ha = 0
+	foreach num in 3 5 20 24 {  /*간호대, 공대, 생과대, 약대*/
+	replace ha = 1 if major == `num'
+	}
+
+	gen sp = 0
+foreach i in 15 23 26 {  /*문과대, 신과대, 연계전공 */
+	replace sp = 1 if major == `i' 
+	}
+
+	gen sa = 0
+foreach i in 4 9 12 13 16 17 18 25 27 {  /*경영대, 교육과학대, 글인, 글인, 법과대학, 사과대, 상경대, 국제대, 음대  */
+	replace sa = 1 if major == `i' 
+	}
+
+replace kyo = 1 if hp ==! 1 | ha ==! 1 | sp ==! 1 | sa ==! 1 
+
+replace major = 0 if kyo == 1
+replace major = 1 if hp == 1
+replace major = 2 if ha == 1
+replace major = 3 if sp == 1
+replace major = 4 if sa == 1
+*********************************************************8
+	
 ** 역량의  축적정도 변환
 foreach i of num 1/4 {
 gen know`i'=substr(문항5`i', 4, 6)
@@ -80,13 +126,13 @@ replace asso = 1 if rank ==3
 gen assist = 0
 replace assist = 1 if rank ==7
 
-*** 회귀1: 역량강화에 영향을 미치는 요인은?
-gen comp = (k1+k2+k3+k4)/4
+*** 회귀1: 역량강화에 영향을 미치는 요인은? *** develop으로도 측정가능함
+gen comp = (k1+k2+k3+k4)/4 
 
 
 *************** Homoskedasticity**********************
-Heteroskedasticity Test using Breush-Pagan LM Test
-reg comp output feed challenge flow develop age rank major gpa grade ab credit lang elec size online
+*Heteroskedasticity Test using Breush-Pagan LM Test
+reg comp output satis feed engage motivate flow age rank major gpa grade ab credit lang elec size online
 hettest /* H0 (homoskedasticity) is rejected. We need robusted standard error or take a natural log on the outcome variable.  */
 **** Heteroskedasticity -> 자연로그, r option 추가
 
@@ -101,7 +147,57 @@ destring iid, gen(un)			     /* 당연히 RC101 같은 수업들은 소거될 �
 									 That is to say, the observations are independent across groups (clusters) but not necessarily within groups. */
 									 /* Example 3 under -xtreg- entry in Stata 13.1 .pdf manual, recommends -vce(robust) for dealing with suspected heteroskedasticity or within panel autocorrelation in the idiosyncratic error term. However, the subsequent Technical note states: "Clustering on the panel variable produces an estimator of the VCE that
 									 is robust to cross-sectional heteroskedasticity and within-panel (serial) correlation..." */
-																
+									 
+
+************** 강의자의 역량은 학생의 역량으로 이어지는가? knowledge and generic skills *********************
+preserve 
+duplicates drop un year, force
+xtset un year
+
+foreach num in 1 2 3 4 {
+xtreg develop output feed engage motivate flow age pro major gpa grade ab credit lang elec size online if major == `num' , fe r
+outreg2 using compet.doc, replace ctitle(DV=Comp)
+xtreg k1 output feed engage motivate flow age pro gpa grade ab credit lang elec size online if major == `num' , fe r
+outreg2 using comp`num' .doc, append ctitle(DV=Knowledge)
+xtreg k2 output feed engage motivate flow age pro gpa grade ab credit lang elec size online if major == `num'  , fe r
+outreg2 using comp`num' .doc, append ctitle(DV=Problem-Solving)
+xtreg k3 output feed engage motivate flow age pro gpa grade ab credit lang elec size online if major == `num' , fe r
+outreg2 using comp`num' .doc, append ctitle(DV=Open Value)
+xtreg k4 output feed engage motivate flow age pro  gpa grade ab credit lang elec size online if major == `num' , fe r
+outreg2 using comp`num' .doc, append ctitle(DV=Communication)
+}
+
+restore
+
+************************ 최종적으로 리포트할 내용! **************
+xtreg develop output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+outreg2 using compete.doc, replace ctitle(DV=Comp)
+xtreg k1 output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+outreg2 using compete.doc, append ctitle(DV=Knowledge)
+xtreg k2 output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+outreg2 using compete.doc, append ctitle(DV=ProblemSolving)
+xtreg k3 output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+outreg2 using compete.doc, append ctitle(DV=OpenValue)
+xtreg k4 output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+outreg2 using compete.doc, append ctitle(DV=Communication)
+
+xtreg ln_satis output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+gen ln_k1 = ln(k1)
+gen ln_k2 = ln(k2)
+gen ln_k3 = ln(k3)
+gen ln_k4 = ln(k4)
+
+	*** 지식전달에는 즉각적인 피드백이 중요하지만, 근본적인 역량향상에는 동기부여 수준, 몰입유도 수준이 중요하다 **********
+	xtreg ln_k1 output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+	xtreg ln_k2 output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+	xtreg ln_k3 output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+	xtreg ln_k4 output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+	xtreg ln_satis output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+	xtreg ln_comp output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+
+
+
+******************************************************************
 preserve 
 duplicates drop un year, force
 xtset un year
@@ -113,12 +209,16 @@ restore
 
 ********Pooled OLS보다 Fixed Effect가 나음 -> F-test 
 ******* Random Effect보다 Fixed Effect가 나음 -> Hausman test
+gen ln_satis = ln(satis)
+gen ln_comp = ln(comp)
+gen ln_develop = ln(develop)
+
 preserve
 duplicates drop un year, force
 tsset un year
-quietly xtreg ln_satis output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, fe
+quietly xtreg ln_satis output satis feed engage motivate flow age rank major gpa grade ab credit lang elec size online, fe
 quietly estimates store fe
-quietly xtreg ln_satis output feed challenge flow develop age rank major gpa grade ab credit lang elec size online, re
+quietly xtreg ln_satis output satis feed engage motivate flow age rank major gpa grade ab credit lang elec size online, re
 quietly estimates store re
 hausman fe re
 restore
@@ -133,31 +233,72 @@ see suest for a generalized test */
 preserve 
 duplicates drop un year, force
 xtset un year
-						*** 아주 강하게 통제를 많이 한 모형
-xtreg ln_satis output feed challenge flow develop age pro major gpa grade ab credit lang elec size online i.year, fe vce(robust)
-xtreg ln_comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online i.year, fe vce(robust)
-xtreg ln_comp output satis feed challenge flow develop age pro major gpa grade ab credit lang elec size online i.year, fe vce(robust)
+* outreg2 using educ2.doc, append ctitle(DV=comp) 
+						*** 변경한 모델
+xtreg ln_satis output feed engage motivate flow age pro major gpa grade ab credit lang elec size online , fe r
+* outreg2 using educ2.doc, replace ctitle(DV=satis) 
+xtreg ln_develop output satis engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+xtreg ln_comp output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+* outreg2 using educ2.doc, append ctitle(DV=comp) 
+
+xtreg ln_satis output feed engage motivate flow age pro major gpa grade ab credit lang elec size online , fe r
+* outreg2 using educ2.doc, replace ctitle(DV=satis) 
+xtreg ln_develop output satis engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+xtreg ln_comp output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+* outreg2 using educ2.doc, append ctitle(DV=comp) 
+
+
 estimates store m1
 generate sample = e(sample)
-sum ln_satis ln_comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online if e(sample)
+sum ln_satis ln_comp output satis feed engage motivate flow age pro major gpa grade ab credit lang elec size online if e(sample)
 restore
 
-						**** BEST: 덜 표준오차를 줄인 모형
+************** 강의자의 역량은 학생의 역량으로 이어지는가? knowledge and generic skills *********************
+preserve 
+duplicates drop un year, force
+xtset un year
+
+foreach num in 1 2 3 4 {
+xtreg develop output feed engage motivate flow age pro major gpa grade ab credit lang elec size online if major == `num' , fe r
+outreg2 using comp`num'.doc, replace ctitle(DV=Comp)
+xtreg k1 output feed engage motivate flow age pro gpa grade ab credit lang elec size online if major == `num' , fe r
+outreg2 using comp`num' .doc, append ctitle(DV=Knowledge)
+xtreg k2 output feed engage motivate flow age pro gpa grade ab credit lang elec size online if major == `num'  , fe r
+outreg2 using comp`num' .doc, append ctitle(DV=Problem-Solving)
+xtreg k3 output feed engage motivate flow age pro gpa grade ab credit lang elec size online if major == `num' , fe r
+outreg2 using comp`num' .doc, replace ctitle(DV=Open Value)
+xtreg k4 output feed engage motivate flow age pro  gpa grade ab credit lang elec size online if major == `num' , fe r
+outreg2 using comp`num' .doc, replace ctitle(DV=Communication)
+}
+
+restore
+******************************************************************
+
+*********** 어떤 수업 구성이 제일 바람직한가*********************************
+
+
+						**** BEST: 덜 표준오차를 줄인 모형 *** comp 지표가 괜찮다
 preserve
 duplicates drop un year, force
 xtset un year
-xtreg ln_satis output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, fe r
-xtreg ln_comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, fe r
-xtreg ln_comp output satis feed challenge flow develop age pro major gpa grade ab credit lang elec size online , fe r
-xtreg satis output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, fe r
-xtreg comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, fe r
-xtreg comp output satis feed challenge flow develop age pro major gpa grade ab credit lang elec size online , fe r
+xtreg satis output satis feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+xtreg develop output satis feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+xtreg comp output satis feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+
+xtreg ln_comp output satis feed engage motivate flow age pro major gpa grade ab credit lang elec size online , fe r
+xtreg satis output satis feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+outreg2 using R3.doc, replace ctitle(DV=satis) 
+
+xtreg comp output satis feed engage motivate flow age pro major gpa grade ab credit lang elec size online, fe r
+outreg2 using R3.doc, append ctitle(DV=comp) 
+
+xtreg comp output satis satis feed engage motivate flow age pro major gpa grade ab credit lang elec size online , fe r
 estimates store m1
 generate sample = e(sample)
-sum satis comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online if e(sample)
+sum satis comp output satis feed engage motivate flow age pro major gpa grade ab credit lang elec size online if e(sample)
 							/* i.year 넣으니까 답이 안나온다 */
-xtreg ln_satis output feed challenge flow develop age pro major gpa grade ab credit lang elec size online i.year, fe r
-xtreg ln_comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online i.year, fe r
+xtreg ln_satis output satis feed engage motivate flow age pro major gpa grade ab credit lang elec size online i.year, fe r
+xtreg ln_comp output satis feed engage motivate flow age pro major gpa grade ab credit lang elec size online i.year, fe r
 
 restore
 
@@ -165,13 +306,14 @@ restore
 preserve
 duplicates drop un year, force
 xtset un year
-xtreg ln_satis output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, re r
-xtreg ln_comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, re r
-xtreg ln_comp output satis feed challenge flow develop age pro major gpa grade ab credit lang elec size online , re r
+xtreg ln_satis output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, re r
+xtreg ln_comp output feed engage motivate flow age pro major gpa grade ab credit lang elec size online, re r
+xtreg ln_comp output feed engage motivate flow age pro major gpa grade ab credit lang elec size online , re r
 estimates store m1
 generate sample = e(sample)
-sum ln_satis ln_comp output feed challenge flow develop age pro major gpa grade ab credit lang elec size online if e(sample)
+sum ln_satis ln_comp output feed engage motivate flow age pro major gpa grade ab credit lang elec size online if e(sample)
 restore
+
 
 ***** ANOVA test: 우수강의자는 다른 교육자인가?
 preserve
@@ -182,13 +324,75 @@ oneway r2 output,  tabulate scheffe
 oneway r3 output,  tabulate scheffe
 oneway r4 output,  tabulate scheffe
 
+oneway r1 output if pro > 0,  tabulate scheffe
+oneway r2 output if pro > 0,  tabulate scheffe
+oneway r3 output if pro > 0,  tabulate scheffe
+oneway r4 output if pro > 0,  tabulate scheffe
+
 replace output = 1 if output ==2
 ttest r1, by(output)
 ttest r2, by(output)
 ttest r3, by(output)
 ttest r4, by(output)
+
+ttest satis if pro > 0, by(output)
+ttest comp if pro > 0, by(output)
 restore
+
 ********강한 차이가 있다***********************************
+
+***** 연구업적 여부만으로 분류해서 비교해보기*******
+preserve
+replace _pos1 = 0 if _pos1 == . 
+ttest r1 if pro>0, by(_pos1)
+ttest r2 if pro>0 , by(_pos1)
+ttest r3 if pro>0, by(_pos1)
+ttest r4 if pro>0, by(_pos1)
+restore
+*******************************************
+
+outreg2 using T.doc, replace ctitle(DV=SATIS with linear term)
+
+*************만족도 상위 10퍼센트, 5퍼센트***********
+preserve
+* replace output = 1 if output == 2
+duplicates drop un year, force
+xtset un year
+egen pc90_satis=pctile(satis),p(90)
+gen top10intp=(satis>pc90_satis)
+tab top10
+egen pc95_satis=pctile(satis),p(95)
+gen top5satis=(satis>pc95_satis)
+tab top5
+xtlogit top10 output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, fe 
+xtlogit top5 output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, fe 
+restore
+***********************************************
+
+****************역량 상위 10퍼센트, 5퍼센트*************
+preserve
+* replace output = 1 if output == 2
+duplicates drop un year, force
+xtset un year
+egen pc90_comp=pctile(comp),p(90)
+gen top10comp=(satis>pc90_comp)
+tab comp
+egen pc95_comp=pctile(comp),p(95)
+gen top5comp=(comp>pc95_comp)
+tab top5
+xtlogit top10 output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, fe 
+xtlogit top5 output feed challenge flow develop age pro major gpa grade ab credit lang elec size online, fe 
+restore
+*********************************************************************
+
+*************실질적으로 강의 스타일의 차이에 따른 역량의 차이가 발생하는가?***************
+preserve
+* replace output = 1 if output == 2
+duplicates drop un year, force
+xtset un year
+xtreg ln_comp output feed challenge flow develop r1 r2 r3 r4 age pro major gpa grade ab credit lang elec size online, fe r
+xtreg ln_comp r1 r2 r3 r4 age pro major gpa grade ab credit lang elec size online, fe r
+restore
 
 
 
@@ -285,6 +489,35 @@ xtreg ln_comp output feed challenge flow develop age rank major, fe
 
 restore
 
+**** 어떤 수업 비중을 갖는 것이 높은 역량강화로 이어지지? 단순지식 전달보다는 문제해결 유형일수록 증가한다! 
+gen rr1 = r1/(r1+r2+r3+r4)
+gen rr2 = r2/(r1+r2+r3+r4)
+gen rr3 = r3/(r1+r2+r3+r4)
+gen rr4 = r4/(r1+r2+r3+r4)
+
+correlate satis rr1 rr2 rr3 rr4, sig
+estpost correlate satis rr1 rr2 rr3 rr4
+estpost correlate satis rr1 rr2 rr3 rr4, matrix
+esttab correlation1 using Correlations.rtf, unstack compress b(2)
+
+pwcorr comp rr1 rr2 rr3 rr4, sig
+estpost pwcorr satis rr1 rr2 rr3 rr4, star(.05)
+eststo correlation1
+esttab correlation1 using Correlations.rtf, unstack compress b(2)
+
+preserve 
+duplicates drop un year, force
+xtset un year
+xtreg comp rr1 rr2 rr3 rr4 age pro , fe
+
+
+
+
+
+restore
+*******************************************8
+
+
 * 그냥 아웃풋을 기준으로 어떤 교수가 담당하는지를 기준으로 보자! 
 															
 
@@ -366,6 +599,12 @@ If the p-value is less than 5%, we assume that this model suffers from heteroske
 
 restore
 ///
+
+
+
+
+
+
 
 
 
