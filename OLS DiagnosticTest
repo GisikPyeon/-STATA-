@@ -1,0 +1,70 @@
+*** Checking Normality of Residuals 
+use https://stats.idre.ucla.edu/stat/stata/webbooks/reg/elemapi2
+regress api00 meals ell emer
+
+predict r, resid /* Generate residuals */
+kdensity r, normal /* plot the residual */
+pnorm r	
+qnorm r
+iqr r /* The presence of any severe outliers should be sufficient evidence to reject normality at a 5% significance level. */
+swilk r	/*  swilk test which performs the Shapiro-Wilk W test for normality. */
+
+* Checking Homoscedasticity of Residuals *
+rvfplot, yline(0) /* y = 0 is a reference line to diagnose with the presence of heteroskedasticity */
+
+estat imtest	/*  imest is the White’s test */
+estat hettest	/*  Breusch-Pagan */
+				/* Therefore it is a common practice to combine the tests with diagnostic plots
+				to make a judgment on the severity of the heteroscedasticity and to decide if any correction is needed for heteroscedasticity. */
+
+*** Checking for Multicollinearity
+/* The primary concern is that as the degree of multicollinearity increases, the regression model estimates of the coefficients become unstable and the standard errors for the coefficients can get wildly inflated. */
+regress api00 meals ell emer
+vif
+regress api00 acs_k3 avg_ed grad_sch col_grad some_col
+vif
+
+*Use collin command; note that only IVs are included 
+collin acs_k3 avg_ed grad_sch col_grad some_col
+
+*** Checking Linearity
+use https://stats.idre.ucla.edu/stat/stata/webbooks/reg/elemapi2
+regress api00 enroll
+twoway (scatter api00 enroll) (lfit api00 enroll) (lowess api00 enroll)
+* locally weighted robust scatterplot smoothing
+predict r, resid
+scatter r meals
+acprplot meals, lowess lsopts(bwidth(1))
+acprplot some_col, lowess lsopts(bwidth(1))
+
+*** 
+use https://stats.idre.ucla.edu/stat/stata/examples/sws5/nations
+regress birth gnpcap urban
+predict r, resid
+acprplot gnpcap, lowess /* clearly shows deviation from the regression mean */
+kdensity gnpcap, normal
+
+*** log transformation to address the skewedness of the regressor
+generate lggnp=log(gnpcap)
+label variable lggnp "log-10 of gnpcap"
+kdensity lggnp, normal
+acprplot lggnp, lowess /* The plot above shows less deviation from nonlinearity */
+
+* Model Specification: Omitted variable bias 
+use https://stats.idre.ucla.edu/stat/stata/webbooks/reg/elemapi2
+regress api00  acs_k3
+linktest	/* It checks the significance of the squared-term */
+ovtest		/* It generates new variable out of the included variables to check for OVB
+				It also creates new variables based on the predictors and refits the model
+				using those new variables to see if any of them would be significant. */ 
+* Issue of Independence: the ids from the similar groups would not be indepedently drawn from the sample. We need to address the interdependency issuse */ 
+* drawn from the similar groups (e.g., the same elementary school)
+** collected on the 'same variables' over time -> the adjacent periods [autocorrelation]
+*** When you have data that can be considered to be time-series you should use the dwstat command that performs a Durbin-Watson test for correlated residuals.
+use https://stats.idre.ucla.edu/stat/stata/webbooks/reg/elemapi2
+tsset snum
+regress api00 enroll				
+dwstat /* Durbin-Watson test: close to 2? */  		
+predict r, resid		
+scatter r snum				
+ 
