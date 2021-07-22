@@ -155,25 +155,23 @@ encode 분반, gen(sub)
 encode 실습분반, gen(ssub)
 egen id=concat(class sub ssub)
 destring id, gen(unit)
+****************************여기까지 기본적인 코딩****************************************************
 
-
-
-		     /* 당연히 RC101 같은 수업들은 소거될 수밖에 없어. 아니면 한명의 교수가 동일한 수업 여러개를 맡는 경우에는 (미시경제원론) 다시 또 소거될 가능성 있음 
-									  이것은 과거 행정자료를 내가 전수조사할 수가 없기 때문에 소거할 필요가 있음 */
-									 /* vce(cluster clustvar) specifies that the standard errors allow for intragroup correlation,
-									 relaxing the usual requirement that the observations be independent.
-									 That is to say, the observations are independent across groups (clusters) but not necessarily within groups. */
-									 /* Example 3 under -xtreg- entry in Stata 13.1 .pdf manual, recommends -vce(robust) for dealing with suspected heteroskedasticity or within panel autocorrelation in the idiosyncratic error term. However, the subsequent Technical note states: "Clustering on the panel variable produces an estimator of the VCE that
-									 is robust to cross-sectional heteroskedasticity and within-panel (serial) correlation..." */
-***********************************************************************
-sum satis comp size age i.pro i.major gpa i.gra i.ev credit i.en i.on i.el
-
-***** ANOVA test: 우수강의자는 다른 교육자인가? ***************
+* Q1-a ***** ANOVA test: 우수강의자는 다른 교육자인가? ***************
 * 연구수준에 따른 강의 만족도 상의 차이가 존재하는지 여부 역시 ANOVA 분석
-oneway satis output,  tabulate scheffe
-*** 연구생산성 output 0 1 2에 따른 강의만족도의 수준
+gen outpu = 0
+replace outpu = 2 if prod == 0 | prod == 1 | prod == 2 | prod ==3 | prod == 4 | prod ==5 
+replace outpu = 1 if prod == 6 | prod ==7 | prod == 8 | prod == 9 | prod == 10 | prod ==11 | prod ==12
 
-*************t-test로 하면 좋은 값이 안 나오네****************
+oneway satis outpu,  tabulate scheffe
+* 추가적으로 히스토그램까지 그려줄 것! 
+*** 연구생산성 output 0 1 2에 따른 강의만족도의 수준
+  
+  
+  ///////////************t-test로 하면 좋은 값이 안 나오네****************
+
+  
+* Q1-b: Good researchers are better communicators!  
 preserve 
 gen out = 0
 replace out = 1 if output == 1 | output == 2
@@ -184,93 +182,17 @@ restore
 
 preserve
 *** 연구 우수자는 특정한 수업방식을 선호하는가? 
-
 rename r1 Knowledge
 rename r2 ProblemSolving
 rename r3 OpenValues 
 rename r4 Communication
-
 gen research = 0
-replace research = 1 if output == 1 | output == 2
-
-
+replace research = 1 if outpu == 1 | outpu == 2
 *** 전체
-quietly mean Knowledge ProblemSolving OpenValues Communication if research==0 & tenure > 0
-estimate store m0
-quietly mean Knowledge ProblemSolving OpenValues Communication if research==1 & tenure > 0
-estimate store m1
-
-coefplot m0 m1, bylabel(research=1)  ///
-           plotlabels("Non-Best" "Best")
-
-		   
-
 ttest Knowledge, by(research)
 ttest ProblemSolving, by(research)
 ttest OpenValues, by(research)
 ttest Communication, by(research)
-
-
-*** hard pure 
-quietly mean Knowledge ProblemSolving OpenValues Communication if research==0 & hp==1 
-estimate store m2
-quietly mean Knowledge ProblemSolving OpenValues Communication if research==1 & hp==1
-estimate store m3
-
-coefplot m2 m3, bylabel(research=1)  ///
-           plotlabels("Non-Best" "Best") ///
-		   saving(panel_HardPure.gph, replace)
-		   
-ttest Knowledge if hp==1, by(research)
-ttest ProblemSolving if hp==1, by(research)
-ttest OpenValues if hp==1, by(research)
-ttest Communication if hp==1, by(research)
-
-*** hard applied
-quietly mean Knowledge ProblemSolving OpenValues Communication if research==0 & ha==1 
-estimate store m4
-quietly mean Knowledge ProblemSolving OpenValues Communication if research==1 & ha==1
-estimate store m5
-
-coefplot m4 m5, bylabel(research=1)  ///
-           plotlabels("Non-Best" "Best") ///
-		   saving(panel_HardApplied.gph, replace)
-		   
-ttest Knowledge if ha==1, by(research)
-ttest ProblemSolving if ha==1, by(research)
-ttest OpenValues if ha==1, by(research)
-ttest Communication if ha==1, by(research)
-
-*** Soft pure
-quietly mean Knowledge ProblemSolving OpenValues Communication if research==0 & sp==1
-estimate store m6
-quietly mean Knowledge ProblemSolving OpenValues Communication if research==1 & sp==1 
-estimate store m7
-
-coefplot m6 m7, bylabel(research=1)  ///
-           plotlabels("Non-Best" "Best") ///
-		   saving(panel_SoftPure.gph, replace)
-		   
-ttest Knowledge if sp==1, by(research)
-ttest ProblemSolving if sp==1, by(research)
-ttest OpenValues if sp==1, by(research)
-ttest Communication if sp==1, by(research)
-
-*** Soft applied
-quietly mean Knowledge ProblemSolving OpenValues Communication if research==0 & sa==1
-estimate store m8
-quietly mean Knowledge ProblemSolving OpenValues Communication if research==1 & sa==1 
-estimate store m9
-
-coefplot m8 m9, bylabel(research=1)  ///
-           plotlabels("Non-Best" "Best") ///
-		   saving(panel_SoftApplied.gph, replace)
-
-ttest Knowledge if sa==1, by(research)
-ttest ProblemSolving if sa==1, by(research)
-ttest OpenValues if sa==1, by(research)
-ttest Communication if sa==1, by(research)
-
 
 
 	********************* Better Researchers are Better Communicators *********************
@@ -344,33 +266,33 @@ ttest Communication if ma==2, by(research)
 
 ** 최종적으로 report 할 내용: online class gra ev en el on
 preserve
-destring id, gen(cla)
 duplicates drop cla year, force
 xtset cla year
 
-gen outpu = 0
-replace outpu = 2 if prod == 0 | prod == 1 | prod == 2 | prod ==3 | prod == 4 | prod ==5 
-replace outpu = 1 if prod == 6 | prod ==7 | prod == 8 | prod == 9 | prod == 10 | prod ==11 | prod ==12
-
-
 foreach i in 1 2 3 4 {
 di "total"
-xtreg k`i' i.outpu feed engage motivate flow age i.tenure i.ma gpa i.ev credit i.en i.el size on, fe r
+xtreg comp i.outpu feed engage motivate age i.tenure i.ma gpa i.ev credit i.en i.el size i.on, fe r
+xtreg k`i' i.outpu feed engage motivate age i.tenure i.ma gpa i.ev credit i.en i.el size i.on, fe r
+sum k`i' i.outpu feed engage motivate age i.tenure i.ma gpa i.ev credit i.en i.el size on if e(sample) 
 }
 
-di "total"
-xtreg satis i.outpu feed engage motivate  age i.tenure i.ma gpa i.ev credit i.en i.el size on, fe r
-di "hard"
-xtreg satis i.outpu feed engage motivate  age i.tenure gpa i.ev credit i.en i.el size i.on if ma == 1, fe r
-di "soft"
-xtreg satis i.outpu feed engage motivate  age i.tenure gpa i.ev credit i.en i.el size i.on if ma == 2, fe r
 
-sum satis outpu feed engage motivate age tenure gpa ev credit en el size on if e(sample)
+di "total"
+xtreg satis i.outpu feed engage motivate age i.tenure i.ma gpa i.ev credit i.en i.el size i.on, fe r
+di "hard"
+xtreg satis i.outpu feed engage motivate age i.tenure gpa i.ev credit i.en i.el size i.on if ma == 1, fe r
+di "soft"
+xtreg satis i.outpu feed engage motivate age i.tenure gpa i.ev credit i.en i.el size i.on if ma == 2, fe r
+di "liberal"
+xtreg satis i.outpu feed engage motivate age i.tenure gpa i.ev credit i.en i.el size i.on if ma == 0, fe r
 
 restore
 
 
-* 중요하게도, 만족도는 피드백, 
+* 중요하게도, 만족도는 (1) 연구성과; (2) 피드백; (3) 동기부여  등의 순서로 나타남 
+** 다시, 역량강화의 측면에서 (1) 연구성과는 커뮤니케이션적인 측면에서만 강화되고; (2) 피드백의 효과는 사라지고, (3) 동기부여가 여전히 강조됨
+
+
 
 
 
