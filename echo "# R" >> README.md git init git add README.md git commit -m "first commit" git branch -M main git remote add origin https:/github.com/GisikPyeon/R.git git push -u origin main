@@ -13,3 +13,48 @@ raw_news_comment <- read_csv("example.csv", locale =
              mutate(id = row_number())
 
 View(raw_news_comment)
+
+news_comment <- raw_news_comment %>%
+  mutate(키워드 = str_replace_all(키워드, "[^가-힣]", " "), # 키워드 앞에 " " 안 넣는 것이 핵심!
+         키워드 = str_squish(키워드))
+
+         # "키워드" = str_squish("키워드")) 
+View(news_comment)         
+         # "키워드" = str_squish("키워드")) # %>%
+
+  # 중복 댓글 제거
+  # distinct("키워드", .keep_all = T) %>%
+
+  # 짧은 문서 제거 - 3 단어 이상 추출
+  # filter(str_count("키워드", boundary("word")) >= 1)
+
+
+View(news_comment)
+
+  # 중복 댓글 제거
+  # distinct("키워드", .keep_all = T) # %>%
+
+  # 짧은 문서 제거 - 3 단어 이상 추출
+  # filter(str_count("키워드", boundary("word")) >= 3)
+
+
+
+library(tidytext)
+library(KoNLP)
+
+# 명사 추출
+comment <- news_comment %>%
+  unnest_tokens(input = 키워드,
+                output = word,
+                token = extractNoun,
+                drop = F) %>%
+  filter(str_count(word) > 1) %>%
+
+  # 댓글 내 중복 단어 제거
+  group_by(id) %>%
+  distinct(word, .keep_all = T) %>%
+  ungroup() %>%
+  select(id, word)
+
+comment
+View(comment)
