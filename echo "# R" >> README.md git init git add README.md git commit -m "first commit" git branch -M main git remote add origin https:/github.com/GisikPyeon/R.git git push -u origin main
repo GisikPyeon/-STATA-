@@ -1,0 +1,15 @@
+setwd("C:\\Users\\ULTR\\Desktop\\Text Mining\\Code_n_data\\Code_n_data\\section2")
+
+library(readr)
+library(dplyr)
+library(readxl)
+library(tidyverse)
+
+read_csv("example.csv", locale = 
+           locale(encoding = "EUC-KR"))
+
+raw_news_comment <- read_csv("example.csv", locale = 
+           locale(encoding = "EUC-KR"))　%>% 
+             mutate(id = row_number())
+
+View(raw_news_comment)
