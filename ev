@@ -1,0 +1,352 @@
+list DC DA if year == 2019 /*** 투자비, 사업현황 매칭하기 ***/ 
+2 KX KV
+list LC LA
+4 RR RP
+5 RW RU
+6 SB RZ
+7 SG SE
+8 SL SJ
+9 SQ SO
+10 SV ST
+11 TA SY
+12 TF TD
+13 TK TI
+14 TP TN
+15 TU TS
+16 TZ TX
+17 UE UC
+18 UJ UH
+19 UO UM
+20 UT UR
+21 UY UW
+22 VD VB
+23 VI VG
+24 AXB AWZ
+25 AXG AXE
+26 AXL AXJ
+27 AXQ AXO
+28 AXV AXT
+29 AYA AXY
+30 AYF AYD
+31 AYK AYI
+32 AYP AYN
+33 BQL BQJ
+34 BRM BRK
+
+*** Specifying the year variables 
+gen x = _n 
+gen year = 0 
+                     /*** 2010년은 한국남동발전(주) 분당복합화력발전처, 2009년도 한국남동발전(주) 분당복합화력발전처
+					나머지는 부산패션협동조합이 1순위 ***/
+preserve /*** 연도 만들기 ***/
+list year 사업장명 if 사업장명 == "부산패션칼라산업협동조합"			 
+list year if 사업장명 == "한국남동발전(주) 분당복합화력발전처"
+
+foreach num of numlist 1/285 {
+	replace year = 2019 if x == `num'
+}
+
+foreach num of numlist 286/541 {
+	replace year = 2018 if x == `num'
+}
+
+foreach num of numlist 542/804 {
+	replace year = 2017 if x == `num'
+}
+
+foreach num of numlist 805/1061 {
+	replace year = 2016 if x == `num'
+}
+
+foreach num of numlist 1062/1324 {
+	replace year = 2015 if x == `num'
+}
+
+foreach num of numlist 1325/1582 {
+	replace year = 2014 if x == `num'
+}
+
+foreach num of numlist 1583/1833 {
+	replace year = 2013 if x == `num'
+}
+
+foreach num of numlist 1834/2086 {
+	replace year = 2012 if x == `num'
+}
+
+foreach num of numlist 2087/2251 {
+	replace year = 2011 if x == `num'
+}
+
+foreach num of numlist 2252/2277 {
+	replace year = 2010 if x == `num'
+}
+
+foreach num of numlist 2278/2299 {
+	replace year = 2009 if x == `num'
+}
+***연도변수 만들어줌 *****************************************************
+
+*** 사업장 변수 만들어줌 ***
+encode 사업장명, gen(firm)
+***********************
+preserve
+duplicates drop firm year, force
+restore 
+xtset firm year
+************************
+isid firm year
+duplicates list firm year /*** 중복된 사업장이 화석연료 발전소가 아니라는 것 확인 ***/ 
+duplicates drop firm year, force
+************************
+list N 사업장명 if N > 0 
+list N 사업장 if N != .
+
+
+*** 매출액 변수: 두 가지로 나뉜 것에 주의 -> 예산규모와는 다른 것 ! *** 
+gen rev = subinstr(매출액, ",", "", .)
+moss rev, match("([0-9]+)")  regex
+l _match*
+l _match1
+gen rrr = _match1  
+drop _count
+drop _pos*
+drop _match* /*** revenue 정리 ***/ 
+destring rrr, gen(R)
+
+*** 전체 사용에너지 변수 만들기 ***
+gen ener = subinstr(에너지원별사용실적에너지원별사용실적1, ",", "", .)
+moss ener, match("([0-9]+)")  regex
+l _match*
+l _match1
+gen energy = _match1  
+drop _count
+drop _pos*
+drop _match* /*** energy 정리 ***/ 
+destring energy, gen(EN) 
+**********************************
+
+*** 국내종업원 수 변수 만들기 ***
+gen wr = subinstr(국내종업원수, ",", "", .)
+moss wr, match("([0-9]+)")  regex
+l _match*
+l _match1
+gen worker = _match1  
+drop _count
+drop _pos*
+drop _match* /*** energy 정리 ***/ 
+destring worker, gen(W) 
+
+
+*******************************
+*** Does Pollution Reduction Lead to CO2 abatement? ***
+preserve
+xtset firm year
+* gen pollution = (N + S + FD)
+gen car =(C - D.C)/C
+gen ln_C = ln(C)
+gen pollu = (pollution-D.pollution)
+xtreg C N W E , fe
+xtreg C invest W E if N > 10, fe
+xtreg ln_C pollution W E if N > 10, fe
+xtreg C N W E if N > 10, fe
+xtreg C S W E if N > 10, fe
+xtreg C FD W E if N > 10, fe
+reg pollution C W E R if N >10
+reg C pollution W E R if N >10
+reg C FD W E R if N >10
+reg C L.C L.invest W E R if N >10
+reg FD invest W E R i.year if N >10
+reg C L3.invest  W E R i.year if N >10   /*** 유일하게 별이 뜨는 것 ***/
+										/*** 별이 뜬다!!! */ 
+reg C invest  W E R i.year if N >10   /*** 별이 안  뜨는 것 ***/
+										
+xtreg C L.invest  W E R i.year if N >10										
+reg S invest W E R i.year if N >10
+
+reg C L2.invest W E R if N >10
+reg C L3.invest W E R if N >10
+
+corr invest C
+
+
+
+sum C pollution W E
+
+
+
+
+
+
+
+preserve
+list 사업장명 대기오염물질배출실적질소산화물Nox1
+egen nox = sieve(대기오염물질배출실적질소산화물Nox1), omit(a)
+destring 대기오염물질배출실적질소산화물Nox1, gen(nox) force
+moss 대기오염물질배출실적질소산화물Nox1, match("([0-9]+)") regex
+
+restore
+
+대기오염물질배출실적황산화물SOX1
+대기오염물질배출실적먼지PM1
+
+/*** SoX 배출량 정수로 추출 ***/ 
+gen sox1 = subinstr(대기오염물질배출실적황산화물SOX1, ",", "", .)
+moss sox1, match("([0-9]+)")  regex
+l _match*
+l _match1
+gen  sox = _match1  /***  sox로 정의 ***/
+drop _count
+drop _pos*
+drop _match* /*** sox 정리 ***/ 
+
+
+/*** NoX 배출량 정수로 추출 ***/ 
+gen poll = subinstr(대기오염물질배출실적질소산화물Nox1, ",", "", .)
+moss poll, match("([0-9]+)")  regex
+l _match*
+gen nox = _match1  /*** NoX를 nox로 정의 ***/
+drop _count
+drop _pos*
+drop _match* /*** nox 정리 ***/
+
+/*** 미세먼지 배출량 정수로 추출 ***/ 
+gen dust = subinstr(대기오염물질배출실적먼지PM1, ",", "", .)
+moss dust, match("([0-9]+)")  regex
+l _match*
+gen finedust = _match1 
+drop _count
+drop _pos*
+drop _match* /*** dust 정리 ***/ 
+des nox sox finedust
+
+/*** Destring pollution variable ***/ 
+destring nox, gen(N)
+destring sox, gen(S)
+destring finedust, gen(FD)
+des N S FD
+
+preserve /*** 탄소배출량을 추출; 변수 이름에 주의 ***/ 
+gen carbon = subinstr(온실가스배출실적직접배출량scope1, ",", "", .)
+
+gen demo3 = substr(carbon, 1, strpos(carbon, "ton") - 1) 
+gen demo4 = trim(demo3) 
+
+list demo3 demo4
+rename demo3 co2 /*** co2 변수 만들기 ***/ 
+destring co2, gen(C)
+
+****** 투자비 매칭하기 *** 
+list DC DA if N >10 & S > 10 /*** 투자비, 사업현황 매칭하기 ***/ 
+2 KX KV
+list LC LA
+4 RR RP
+5 RW RU
+6 SB RZ
+7 SG SE
+8 SL SJ
+9 SQ SO
+10 SV ST
+11 TA SY
+12 TF TD
+13 TK TI
+14 TP TN
+15 TU TS
+16 TZ TX
+17 UE UC
+18 UJ UH
+19 UO UM
+20 UT UR
+21 UY UW
+22 VD VB
+23 VI VG
+24 AXB AWZ
+25 AXG AXE
+26 AXL AXJ
+27 AXQ AXO
+28 AXV AXT
+29 AYA AXY
+30 AYF AYD
+31 AYK AYI
+32 AYP AYN
+33 BQL BQJ
+34 BRM BRK
+
+
+*************** 간단히 대기,수질,토양 등 오염 투자 금액 추산
+preserve
+foreach var of varlist DC KX LC RR RW SB SG SL SQ SV TA TF TK TP TU TZ UE UJ UO UY VD VI AXB AXG AXL AXQ AXV AYA AYF AYK AYP BQL BRM {
+gen `var'1 = subinstr(`var', ",", "", .)
+moss `var'1, match("([0-9]+)")  regex
+l _match*
+gen `var'real = _match1 
+drop _count
+drop _pos*
+drop _match* /*** dust 정리 ***/ 
+destring `var'1, gen(`var'_numeric)
+}
+
+foreach var of varlist DC KX LC RR RW SB SG SL SQ SV TA TF TK TP TU TZ UE UJ UO UY VD VI AXB AXG AXL AXQ AXV AYA AYF AYK AYP BQL BRM {
+	egen investment = sum(`var'_numeric)
+}
+restore
+
+foreach var of varlist  DCreal KXreal LCreal RRreal RWreal SBreal SGreal SLreal SQreal SVreal TAreal TFreal TKreal TPreal TUreal TZreal UEreal UJreal UOreal UYreal VDreal VIreal AXBreal AXGreal AXLreal AXQreal AXVreal AYAreal AYFreal AYKreal AYPreal BQLreal BRMreal {
+destring(`var'), gen(`var'_1)
+* egen invest=rowtotal(`var'_1)
+}
+gen invest = (DCreal_1 + KXreal_1+ LCreal_1+ RRreal_1 +RWreal_1+ SBreal_1+ SGreal_1+ SLreal_1+ SQreal_1+ SVreal_1+ TAreal_1+ TFreal_1+ TKreal_1+ TPreal_1+ TUreal_1+ TZreal_1+ UEreal_1+ UJreal_1+ UOreal_1+ UYreal_1+ VDreal_1+ VIreal_1 + AXBreal_1+ AXGreal_1+ AXLreal_1+ AXQreal_1+ AXVreal_1+ AYAreal_1+ AYFreal_1+ AYKreal_1+ AYPreal_1+ BQLreal_1+ BRMreal_1)
+egen invest = rowtotal(DCreal_1  KXreal_1 LCreal_1 RRreal_1 RWreal_1 SBreal_1 SGreal_1 SLreal_1 SQreal_1 SVreal_1 TAreal_1 TFreal_1 TKreal_1 TPreal_1 TUreal_1 TZreal_1 UEreal_1 UJreal_1 UOreal_1 UYreal_1 VDreal_1 VIreal_1  AXBreal_1 AXGreal_1 AXLreal_1 AXQreal_1 AXVreal_1 AYAreal_1 AYFreal_1 AYKreal_1 AYPreal_1 BQLreal_1 BRMreal_1)
+*********** 투자 변수 형성 **************
+ gen invest = (DCreal_1 + KXreal_1+ LCreal_1+ RRreal_1 +RWreal_1)
+ drop invest 
+ egen invest = rowtotal(DCreal_1  KXreal_1 LCreal_1 RRreal_1 RWreal_1 SBreal_1 SGreal_1 SLreal_1 SQreal_1 SVreal_1 ///
+ TAreal_1 TFreal_1 TKreal_1 TPreal_1 TUreal_1 TZreal_1 UEreal_1 UJreal_1 UOreal_1 UYreal_1 VDreal_1 VIreal_1 ///
+ VIreal_1)
+ ***************투자액 측정 ***********
+
+gen rev = subinstr(매출액, ",", "", .)
+moss rev, match("([0-9]+)")  regex
+l _match*
+l _match1
+gen rrr = _match1  
+drop _count
+drop _pos*
+drop _match* /*** revenue 정리 ***/ 
+destring rrr, gen(R)
+
+
+restore
+l _match*
+restore
+
+rename _match1 nox
+
+
+
+
+
+
+
+
+egen nvar2 = sieve(대기오염물질배출실적질소산화물Nox1), keep(numeric)
+
+restore
+
+
+/*** 더 정확한 값 */ 
+gen demo1 = substr(대기오염물질배출실적질소산화물Nox1, 1, strpos(대기오염물질배출실적질소산화물Nox1, "ton") - 1) 
+gen Nox = trim(demo1) 
+destring Nox, gen(NOX)
+list 사업장명 Nox
+
+gen demo2 = substr(매출액, 1, strpos(매출액, "(") - 1) 
+gen revenue = trim(demo2) 
+destring revenue, gen(money)
+list 사업장명 rev
+
+generate byte money= missing(string(rev))
+list 사업장명 money
+
+gen rev = real(매출액)
+destring 매출액, replace 
