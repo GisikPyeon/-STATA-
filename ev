@@ -33,12 +33,13 @@ list LC LA
 33 BQL BQJ
 34 BRM BRK
 
-*** Specifying the year variables 
+*** [1] Specifying the year variables 
 gen x = _n 
 gen year = 0 
-                     /*** 2010년은 한국남동발전(주) 분당복합화력발전처, 2009년도 한국남동발전(주) 분당복합화력발전처
+ 
+ /*** 2010년은 한국남동발전(주) 분당복합화력발전처, 2009년도 한국남동발전(주) 분당복합화력발전처
 					나머지는 부산패션협동조합이 1순위 ***/
-preserve /*** 연도 만들기 ***/
+					/*** 연도 만들기 ***/
 list year 사업장명 if 사업장명 == "부산패션칼라산업협동조합"			 
 list year if 사업장명 == "한국남동발전(주) 분당복합화력발전처"
 
@@ -87,10 +88,9 @@ foreach num of numlist 2278/2299 {
 }
 ***연도변수 만들어줌 *****************************************************
 
-*** 사업장 변수 만들어줌 ***
+*** [2] 사업장 변수 만들어줌 ***
 encode 사업장명, gen(firm)
 ***********************
-preserve
 duplicates drop firm year, force
 restore 
 xtset firm year
@@ -103,7 +103,7 @@ list N 사업장명 if N > 0
 list N 사업장 if N != .
 
 
-*** 매출액 변수: 두 가지로 나뉜 것에 주의 -> 예산규모와는 다른 것 ! *** 
+*** [3] 매출액 변수: 두 가지로 나뉜 것에 주의 -> 예산규모와는 다른 것 ! *** 
 gen rev = subinstr(매출액, ",", "", .)
 moss rev, match("([0-9]+)")  regex
 l _match*
@@ -114,19 +114,7 @@ drop _pos*
 drop _match* /*** revenue 정리 ***/ 
 destring rrr, gen(R)
 
-*** 전체 사용에너지 변수 만들기 ***
-gen ener = subinstr(에너지원별사용실적에너지원별사용실적1, ",", "", .)
-moss ener, match("([0-9]+)")  regex
-l _match*
-l _match1
-gen energy = _match1  
-drop _count
-drop _pos*
-drop _match* /*** energy 정리 ***/ 
-destring energy, gen(EN) 
-**********************************
-
-*** 국내종업원 수 변수 만들기 ***
+*** [4] 국내종업원 수 변수 만들기 ***
 gen wr = subinstr(국내종업원수, ",", "", .)
 moss wr, match("([0-9]+)")  regex
 l _match*
@@ -137,8 +125,173 @@ drop _pos*
 drop _match* /*** energy 정리 ***/ 
 destring worker, gen(W) 
 
+*** [5] 사용에너지 변수 만들기 ***
+gen ener = subinstr(에너지원별사용실적에너지원별사용실적1, ",", "", .)
+moss ener, match("([0-9]+)")  regex
+l _match*
+l _match1
+gen energy = _match1  
+drop _count
+drop _pos*
+drop _match* /*** energy 정리 ***/ 
+destring energy, gen(EN) 
 
+*** [6] 총 용수 변수 만들기 *** 
+gen water = subinstr(용수사용재활용량실적용수사용량1, ",", "", .)
+moss water, match("([0-9]+)")  regex
+l _match*
+l _match1
+gen water1 = _match1  
+drop _count
+drop _pos*
+drop _match* /*** 총 용수  정리 ***/ 
+destring water1, gen(WA) 
+order WA, b(용수사용재활용량실적용수사용량1)
+
+*** [7] 대기오염 물질배출 추출 ***
+/*** SoX 배출량 정수로 추출 ***/ 
+gen sox1 = subinstr(대기오염물질배출실적황산화물SOX1, ",", "", .)
+moss sox1, match("([0-9]+)")  regex
+l _match*
+l _match1
+gen  sox = _match1  /***  sox로 정의 ***/
+drop _count
+drop _pos*
+drop _match* /*** sox 정리 ***/ 
+destring sox, gen(S)
+
+
+/*** NoX 배출량 정수로 추출 ***/ 
+gen poll = subinstr(대기오염물질배출실적질소산화물Nox1, ",", "", .)
+moss poll, match("([0-9]+)")  regex
+l _match*
+gen nox = _match1  /*** NoX를 nox로 정의 ***/
+drop _count
+drop _pos*
+drop _match* /*** nox 정리 ***/
+destring nox, gen(N)
+
+/*** 미세먼지 배출량 정수로 추출 ***/ 
+gen dust = subinstr(대기오염물질배출실적먼지PM1, ",", "", .)
+moss dust, match("([0-9]+)")  regex
+l _match*
+gen finedust = _match1 
+drop _count
+drop _pos*
+drop _match* /*** dust 정리 ***/ 
+destring finedust, gen(FD)
+*********************************************************************
+
+
+*** [8] 탄소배출량을 추출; 변수 이름에 주의 ***/ 
+gen carbon = subinstr(온실가스배출실적직접배출량scope1, ",", "", .)
+
+gen demo3 = substr(carbon, 1, strpos(carbon, "ton") - 1) 
+gen demo4 = trim(demo3) 
+
+list demo3 demo4
+rename demo3 co2 /*** co2 변수 만들기 ***/ 
+destring co2, gen(C)
+*********************************************************************8
+
+*** [9] 원부자재 절감투자: 원부자재절감투자및기술도입현황총투자비1
+foreach num of numlist 1/11 {
+gen raw`num' = subinstr(원부자재절감투자및기술도입현황총투자비`num', ",", "", .)
+moss raw`num', match("([0-9]+)")  regex
+l _match*
+gen raw`num'investment = _match1 
+drop _count
+drop _pos*
+drop _match* /*** dust 정리 ***/ 
+destring raw`num'investment, gen(raw_`num')
+} 
+*****************
+egen rawtotal=rowtotal(raw_1 raw_2 raw_3 raw_4 raw_5 raw_6 raw_7 raw_8 raw_9 raw_10 raw_11)
+rename rawtotal rawinvest
 *******************************
+
+*** [10] 용수절감 투자 및 기술 도입 현황  변수 만들기
+foreach num of numlist 1/9 {
+gen waterinvest`num' = subinstr(용수절감투자및기술도입현황총투자비`num', ",", "", .)
+moss waterinvest`num', match("([0-9]+)")  regex
+l _match*
+gen water`num'investment = _match1 
+drop _count
+drop _pos*
+drop _match* /*** dust 정리 ***/ 
+destring water`num'investment, gen(water_`num')
+} 
+*****************
+egen waterinvest=rowtotal(water_1 water_2 water_3 water_4 water_5 water_6 water_7 water_8 water_9)
+*****************
+
+*** [11] 에너지 절감 투자 변수 만들기
+foreach num of numlist 1/18 {
+gen energyinvest`num' = subinstr(에너지절감투자및기술도입현황총투자비`num', ",", "", .)
+moss energyinvest`num', match("([0-9]+)")  regex
+l _match*
+gen energy`num'investment = _match1 
+drop _count
+drop _pos*
+drop _match* /*** dust 정리 ***/ 
+destring energy`num'investment, gen(energy_`num')
+} 
+*****************
+egen energyinvest=rowtotal(energy_1 energy_2 energy_3 energy_4 energy_5 energy_6 energy_7 energy_8 energy_9 energy_10 energy_11 energy_12 energy_13 energy_14 energy_15 energy_16 energy_17 energy_18)
+*****************
+
+*** [12] 온실가스 투자 및 기술 도입 현황 총투자비 변수 만들기
+foreach num of numlist 1/17 {
+gen carboninvest`num' = subinstr(온실가스투자및기술도입현황총투자비`num', ",", "", .)
+moss carboninvest`num', match("([0-9]+)")  regex
+l _match*
+gen carbon`num'investment = _match1 
+drop _count
+drop _pos*
+drop _match* /*** dust 정리 ***/ 
+destring carbon`num'investment, gen(carbon_`num')
+} 
+*****************
+egen carboninvest=rowtotal(carbon_1 carbon_2 carbon_3 carbon_4 carbon_5 carbon_6 carbon_7 carbon_8 carbon_9 carbon_10 carbon_11 carbon_12 carbon_13 carbon_14 carbon_15 carbon_16 carbon_17)
+**********
+
+*** [13] 발전소만 추출하기 
+list x 사업장명 N /** Less than 10 arguments **/ 
+* local colist1 " "부산패션칼라산업협동조합", "인천공항에너지", "인천종합에너지", "대구염색산업단지관리공단열병합발전소", "(주)미래엔인천에너지", "(주)씨텍", "한국동서발전 당진발전본부", "한국동서발전(주) 일산발전본부", "한국동서발전_동해바이오발전본부" 
+keep if inlist(사업장명, "부산패션칼라산업협동조합", "인천공항에너지", "인천종합에너지", "대구염색산업단지관리공단열병합발전소", "(주)미래엔인천에너지", "(주)씨텍", "한국동서발전 당진발전본부", "한국동서발전(주) 일산발전본부", "한국동서발전_동해바이오발전본부" ) | /// *** |의 순서에 주의
+		inlist(사업장명, "한국동서발전_울산발전본부", "한국동서발전_호남화력본부", "안산도시개발(주)", "한국지역난방공사", "한국지역난방공사_강남지사", "한국지역난방공사_고양지사", "한국지역난방공사_광교지사", "한국지역난방공사_광주전남지사", "한국지역난방공사_김해지사") | ///
+		inlist(사업장명, "한국지역난방공사_대구지사", "한국지역난방공사_동탄지사", "한국지역난방공사_분당지사", "한국지역난방공사_삼송지사", "한국지역난방공사_세종지사", "한국지역난방공사_수원지사", "한국지역난방공사_양산지사", "한국지역난방공사_용인지사", "한국지역난방공사_중앙(상암)지사" ) | ///
+		inlist(사업장명, "한국지역난방공사_중앙(중앙)지사", "한국지역난방공사_청주지사", "한국지역난방공사_파주지사", "한국지역난방공사_판교지사", "한국지역난방공사_화성지사", "한국서부발전주식회사", "한국서부발전_군산발전본부", "한국서부발전_태안발전본부") | ///
+		inlist(사업장명, "한국서부발전_평택발전본부", "SGC에너지", "구리시_토평정수장", "한국남동발전(주)", "한국남동발전(주) 분당발전본부", "한국남동발전(주) 여수발전본부", "한국남동발전(주)_삼천포발전본부", "한국남동발전(주)_영동에코발전본부", "한국남동발전(주)_영흥발전본부"  ) | ///
+		inlist(사업장명, "무림파워텍(주)", "케이지이티에스(주)에너지공장", "GS파워주식회사 서울사무소", "GS파워(주) 부천열병합발전처", "GS파워(주) 안양열병합발전처", "씨지앤율촌전력주식회사", "대전열병합발전(주)", "전북집단에너지(주)", "에너원(주)" ) | ///
+		inlist(사업장명,  "한국토지주택공사 아산에너지사업단", "한국중부발전(주) 인천발전본부", "한국중부발전(주) 제주발전본부", "한국중부발전(주)_보령발전본부", "한국중부발전(주)_서울발전본부", "한국중부발전(주)_서울발전본부(원주)", "한국중부발전(주)_세종발전본부", "한국중부발전(주)_신보령발전본부", "(주)지에스이앤알") | ///
+		 inlist(사업장명, "지에스이앤알(구미)", "금호석유화학 여수제2에너지", "금호석유화학(주) 여수제1에너지", "에스케이이엔에스 주식회사", "광양천연가스발전소", "한국가스공사 강원지역본부", "한국가스공사 경기지역본부", "한국가스공사_광주전남지역본부", "한국가스공사_대구경북지역본부" ) | ///
+		 inlist(사업장명, "한국가스공사_대전충청지역본부", "한국가스공사_부산경남지역본부", "한국가스공사_삼척기지본부", "한국가스공사_서울지역본부", "한국가스공사_인천기지본부", "한국가스공사_인천지역본부", "한국가스공사_전북지역본부", "한국가스공사_제주LNG본부", "한국가스공사_통영기지본부") | ///
+		 inlist(사업장명, "한국가스공사_평택기지본부", "(주)한주", "한국남부발전 부산발전본부", "한국남부발전_남제주발전본부", "한국남부발전_삼척발전본부", "한국남부발전_신인천발전본부", "한국남부발전_안동발전본부", "한국남부발전_영월발전본부", "한국남부발전_하동발전본부" ) | ///
+		 inlist(사업장명, "한국남부발전_한림발전소", "지에스이피에스 주식회사", "포스코에너지(주) 노원 연료전지 발전소", "포스코에너지(주) 인천LNG복합발전소", "포스코에너지(주)_인천 연료전지 발전소", "포스코에너지(주)_포항 연료전지 발전소 2", "한국가스기술공사 본사", "안산시_연성정수장", "한국수자원공사" ) | ///
+		 inlist(사업장명, "한국수자원공사_거제권지사", "한국수자원공사_경기동남권지사", "한국수자원공사_경기서남권지사", "한국수자원공사_경기서북권지사", "한국수자원공사_경남서부권지사", "한국수자원공사_고령권지사", "한국수자원공사_구미권지사", "한국수자원공사_동화권지사", "한국수자원공사_보령권지사"  ) | ///
+		 inlist(사업장명, "한국수자원공사_부안권지사", "한국수자원공사_서산권지사", "한국수자원공사_아라뱃길지사", "한국수자원공사_아산권지사", "한국수자원공사_여수권지사", "한국수자원공사_울산권지사", "한국수자원공사_전남서남권지사", "한국수자원공사_전남중부권지사", "한국수자원공사_전주권지사" ) | ///
+		 inlist(사업장명, "한국수자원공사_정읍권지사", "한국수자원공사_창원권지사", "한국수자원공사_천안권지사", "한국수자원공사_청주권지사", "한국수자원공사_충남중부권지사", "한국수자원공사_충주권지사", "한국수자원공사_태백권지사(강원남부권지사)", "한국수자원공사_팔당권지사", "한국수자원공사_포항권지사" ) | ///
+		 inlist(사업장명, "한국수자원공사_화성권지사", "한국수자원공사_횡성원주권지사", "현대그린파워(주)", "수완에너지", "부산정관에너지", "나래에너지서비스(주) 강동사업소", "나래에너지서비스(주) 하남사업소", "나래에너지서비스(주)_위례사업소", "한화에너지(주)" ) | ///
+		 inlist(사업장명, "한화에너지(주) 군산공장", "한화에너지(주) 여수공장", "베올리아워터코리아대산(주)", "(주)삼천리 광명사업단", "JB 주식회사 청수에너지", "평택에너지서비스 주식회사", "디에스파워 주식회사", "별내에너지", "데이원에너지(주)" ) | ///
+		 inlist(사업장명, "(주)에스파워 안산복합화력발전소", "(주)에스파워 광명연료전지발전소", "대구그린파워(주)", "(주)대륜발전", "CNCITY에너지", "포천파워(주)", "김천에너지서비스(주)", "동두천드림파워(주)", "(주)상공에너지") | ///
+		 inlist(사업장명, "서울에너지공사 목동플랜트(본사)", "서울에너지공사 노원플랜트", "서울에너지공사 마곡플랜트", "내포그린에너지(주)", "주식회사 지에스동해전력", "(주)동양환경_서산지점", "(주)티에스케이이앤피 본사", "OCI SE 주식회사" ) | ///
+		 inlist(사업장명, "파주에너지서비스", "코스포영남파워(주)", "춘천에너지(주)", "(주)엔이티", "케이알에너지(주)", "보령엘엔지터미널(주)", "제주에너지공사", "한국중부발전(주) 서천화력", "포스코에너지(주) 광양부생복합발전소" ) | ///
+		 inlist(사업장명, "포스코에너지(주) 포항부생복합발전소", "위례에너지서비스 주식회사", "달성사업소", "티피피 주식회사", "디에스파워 주식회사 오산지점", "씨지앤대산전력(주)", "베올리아워터자원개발주식회사", "한국동서발전 신당진건설본부", "한국남동발전(주) 신영흥본부" ) | ///
+		 inlist(사업장명, "전북에너지서비스(도시가스사업장)", "한국남부발전 영남화력발전소", "SK에너지(주)guKGETS", "대성산업 CES사업본부", "대성산업(주)코젠사업부", "SK에너지(주)gu새한", "SK에너지(주)gu홍원", "여수열병합발전(주)", "한화에너지 군산공장" ) | ///
+		 inlist(사업장명, "한국남동발전(주) 분당복합화력발전처", "한국중부발전(주)서울화력발전소", "한국남부발전(주) 하동화력본부", "한국서부발전 태안발전본부", "한국가스공사 인천기지본부", "한국중부발전(주) 인천화력발전본부", "한국남동발전(주) 여수화력발전처", "한국서부발전(주) 서인천발전본부", "한국동서발전(주) 일산열병합발전처" ) | ///
+		 inlist(사업장명, "남부발전(주)신인천천연가스발전본부", "한국중부발전(주) 제주화력발전소", "한국남부발전(주) 부산천연가스발전본부", "한국중부발전(주)서천화력발전소", "GS파워주식회사 안양사업소", "한국동서발전(주) 당진화력본부", "한국가스공사 평택기지본부", "GS파워부천사업소", "한국동서발전 동해화력발전처" ) | ///
+		 inlist(사업장명, "부산패션칼라산업협동조합", "인천공항에너지", "인천종합에너지", "대구염색산업단지관리공단열병합발전소", "(주)미래엔인천에너지", "(주)씨텍", "한국동서발전 당진발전본부", "한국동서발전(주) 일산발전본부", "한국동서발전_동해바이오발전본부" ) 
+
+
+
+
+
+
+
+
+
+
 *** Does Pollution Reduction Lead to CO2 abatement? ***
 preserve
 xtset firm year
@@ -157,12 +310,43 @@ reg C pollution W E R if N >10
 reg C FD W E R if N >10
 reg C L.C L.invest W E R if N >10
 reg FD invest W E R i.year if N >10
-reg C L3.invest  W E R i.year if N >10   /*** 유일하게 별이 뜨는 것 ***/
+xtreg S L.invest  W E R i.year if N >10, re   /*** 유일하게 별이 뜨는 것 ***/
 										/*** 별이 뜬다!!! */ 
 reg C invest  W E R i.year if N >10   /*** 별이 안  뜨는 것 ***/
 										
 xtreg C L.invest  W E R i.year if N >10										
-reg S invest W E R i.year if N >10
+reg C L.invest W E R i.year if N >10
+
+
+*** LM Test -> Random effect model is preferred to the pooled OLS
+quietly xtreg C L.invest  W E R i.year if N >10, re i(firm)
+xttest0
+
+gen red_rate = (C - L.C) / R
+xtreg red_rate L.invest  W E i.year if N >10, re  
+xtreg red_rate L.invest  W E  if N >10, fe  
+
+*** Hausman
+quietly xtreg C L.invest  W E i.year if N >10, re
+quietly estimates store random
+
+quietly xtreg C L.invest  W E i.year if N >10, fe
+quietly estimates store fixed
+
+hausman random fixed
+
+*** Elasticity *** 별이 강력하게 나온다! 
+gen car_pct = (C - L.C)/C
+gen n_pct = (N - L.N)/N
+gen invest_pct = (invest - L.invest)/invest
+xtreg car_pct c.n_pct##c.invest  W E R if N >10, re  
+xtreg car_pct L.invest_pct L.n_pct W E R if N > 10, re
+
+reg C L.invest W E R i.year if N > 10
+reg C L.invest  W E R if N >10										
+reg S L.invest W E R  if N >10
+reg N L.invest W E R  if N >10
+
 
 reg C L2.invest W E R if N >10
 reg C L3.invest W E R if N >10
@@ -173,6 +357,7 @@ corr invest C
 
 sum C pollution W E
 
+gen 
 
 
 
@@ -279,12 +464,56 @@ foreach var of varlist DC KX LC RR RW SB SG SL SQ SV TA TF TK TP TU TZ UE UJ UO 
 gen `var'1 = subinstr(`var', ",", "", .)
 moss `var'1, match("([0-9]+)")  regex
 l _match*
-gen `var'real = _match1 
+gen `var'r = _match1 
 drop _count
 drop _pos*
 drop _match* /*** dust 정리 ***/ 
-destring `var'1, gen(`var'_numeric)
+destring `var'r, gen(`var'real)
 }
+*var of varlist  DCreal KXreal LCreal RRreal RWreal SBreal SGreal SLreal SQreal SVreal TAreal TFreal TKreal TPreal TUreal TZreal UEreal UJreal UOreal UYreal VDreal VIreal AXBreal AXGreal AXLreal AXQreal AXVreal AYAreal AYFreal AYKreal AYPreal BQLreal BRMreal {
+egen invest = rowtotal(DCreal KXreal LCreal RRreal RWreal SBreal SGreal SLreal SQreal SVreal TAreal TFreal TKreal TPreal TUreal TZreal UEreal UJreal UOreal UYreal VDreal VIreal AXBreal AXGreal AXLreal AXQreal AXVreal AYAreal AYFreal AYKreal AYPreal BQLreal BRMreal) 
+xtset firm year
+reg C L.invest L.carboninvest L.rawinvest L.waterinvest  W WA EN i.year if N>10
+
+gen cinvest = carboninvest + rawinvest +waterinvest 
+xtreg C L.carboninvest rawinvest waterinvest W WA EN if N > 10
+xtreg C L.carboninvest rawinvest waterinvest W WA EN if N > 10
+xtreg N invest carboninvest rawinvest waterinvest W WA EN if N > 10
+
+xtreg C L.carboninvest L.rawinvest L.waterinvest W WA EN i.year if N > 10, re
+xtreg C carboninvest rawinvest waterinvest W WA EN i.year if N > 10
+xtreg C L.carboninvest L.rawinvest L.waterinvest W WA EN i.year if N > 10, re
+reg N L.carboninvest L.rawinvest L.waterinvest  W WA EN i.year if N>10
+
+xtreg N cinvest L.rawinvest L.waterinvest W WA EN i.year if N > 10, re
+xtreg N carboninvest W WA EN R i.year if N > 10
+xtreg N carboninvest W WA EN R i.year if N > 10, fe
+reg N L.carboninvest W WA EN R i.year if N>10
+
+xtreg N L.carboninvest W WA EN i.year if N > 10, fe
+xtreg N L.carboninvest W WA EN i.year if N > 10, fe
+
+xtreg N L.cinvest W WA EN R i.year if N > 10, re
+quietly estimates store random
+
+ xtreg N L.cinvest W WA EN R i.year if N > 10, fe
+quietly estimates store fixed
+
+hausman random fixed
+
+restore
+
+xtreg ln_C pollution W E if N > 10, fe
+xtreg C N W E if N > 10, fe
+xtreg C S W E if N > 10, fe
+xtreg C FD W E if N > 10, fe
+reg pollution C W E R if N >10
+reg C pollution W E R if N >10
+reg C FD W E R if N >10
+reg C L.C L.invest W E R if N >10
+
+
+
 
 foreach var of varlist DC KX LC RR RW SB SG SL SQ SV TA TF TK TP TU TZ UE UJ UO UY VD VI AXB AXG AXL AXQ AXV AYA AYF AYK AYP BQL BRM {
 	egen investment = sum(`var'_numeric)
