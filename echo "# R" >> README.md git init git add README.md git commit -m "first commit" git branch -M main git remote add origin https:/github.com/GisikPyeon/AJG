@@ -1,0 +1,270 @@
+```{r setup}
+setwd("C:\\Users\\ULTR\\Desktop\\Text Mining\\Code_n_data\\Code_n_data\\section2")
+
+### 동시출현 네트워크 분석
+
+# 기생충 기사 댓글 불러오기
+library(readr)
+library(dplyr)
+
+
+raw_news_comment <- read_csv("example.csv", locale = 
+                    locale(encoding = "EUC-KR")) 
+
+# 전처리
+library(dplyr)
+library(stringr)
+library(textclean)
+
+news_comment <- raw_news_comment %>%
+  filter(언론사=="조선일보" | 언론사=="중앙일보" | 언론사=="동아일보") %>%
+  select(인물) %>%
+  mutate(인물 = str_replace_all(인물, "[^가-힣]", " "),
+         인물 = str_squish(인물),
+         id = row_number())
+
+### 보수언론만 검색
+ # news_comment <- news_comment %>%
+ #               filter(news_comment, 언론사 != "한겨레") %>%
+ #               filter(news_comment, 언론사 != "경향신문")
+
+# -------------------------------------------------------------------------
+library(tidytext)
+library(KoNLP)
+
+comment_pos <- news_comment %>%
+  unnest_tokens(input = 인물,
+                output = word,
+                token = SimplePos22,
+                drop = F)
+
+comment_pos %>% 
+  select(word, 인물)
+
+
+# -------------------------------------------------------------------------
+# 명사 추출하기
+noun <- comment_pos %>%
+  filter(str_detect(word, "/n")) %>%
+  mutate(word = str_remove(word, "/.*$"))
+ 
+noun <- noun[!(noun$word == "윤호진" ), ] # 이상한 행 지우기
+noun <- noun[!(noun$word == "가상현" ), ]
+noun <- noun[!(noun$word == "송성각" ), ]
+noun <- noun[!(noun$word == "린다" ), ]
+noun <- noun[!(noun$word == "라이너" ), ]
+noun <- noun[!(noun$word == "옵스트" ), ]
+noun <- noun[!(noun$word == "방송인" ), ]
+noun <- noun[!(noun$word == "인터스텔라" ), ]
+
+noun %>%
+  select(word, 인물)
+########## 인물의 경우 noun만 활용하는 것!
+# -------------------------------------------------------------------------
+# 동사, 형용사 추출하기
+pvpa <- comment_pos %>%
+  filter(str_detect(word, "/pv|/pa")) %>%         # "/pv", "/pa" 추출
+  mutate(word = str_replace(word, "/.*$", "다"))  # "/"로 시작 문자를 "다"로 바꾸기
+
+pvpa %>%
+  select(word, 인물)
+
+
+# -------------------------------------------------------------------------
+pvpa %>%
+  count(word, sort = T)
+
+
+# -------------------------------------------------------------------------
+# 품사 결합
+comment <- bind_rows(noun) %>%
+  filter(str_count(word) >= 2) %>%
+  arrange(id)
+
+
+comment %>%
+  select(word, 인물)
+
+comment_new <- comment_pos %>%
+  separate_rows(word, sep = "[+]") %>%
+  filter(str_detect(word, "/n|/pv|/pa")) %>%
+  mutate(word = ifelse(str_detect(word, "/pv|/pa"),
+                       str_replace(word, "/.*$", "다"),
+                       str_remove(word, "/.*$"))) %>%
+  filter(str_count(word) >= 2) %>%
+  arrange(id)
+
+
+
+
+# 05-2 --------------------------------------------------------------------
+
+
+library(tidygraph)
+
+graph_comment <- pair %>%
+  filter(n >= 20) %>% # If n >=, then it contains more than 4115 nodes and 376708 degrees 
+  as_tbl_graph() # Find the adequate parameter such that the graph seems reasonable!
+                 # 진보는 30, 보수는 20으로 비중을 맞춤
+
+graph_comment
+
+
+# -------------------------------------------------------------------------
+
+library(ggraph)
+
+ggraph(graph_comment) +
+  geom_edge_link() +                 # 엣지
+  geom_node_point() +                # 노드
+  geom_node_text(aes(label = name))  # 텍스트
+
+
+# -------------------------------------------------------------------------
+library(showtext)
+font_add_google(name = "Nanum Gothic", family = "nanumgothic")
+showtext_auto()
+
+
+# -------------------------------------------------------------------------
+set.seed(1234)                              # 난수 고정
+ggraph(graph_comment, layout = "fr") +      # 레이아웃
+  
+  geom_edge_link(color = "gray50",          # 엣지 색깔
+                 alpha = 0.5) +             # 엣지 명암
+
+  geom_node_point(color = "lightcoral",     # 노드 색깔
+                  size = 5) +               # 노드 크기
+
+  geom_node_text(aes(label = name),         # 텍스트 표시
+                 repel = T,                 # 노드밖 표시
+                 size = 5,                  # 텍스트 크기
+                 family = "nanumgothic") +  # 폰트
+
+  theme_graph()                             # 배경 삭제
+
+
+word_network <- function(x) {
+  ggraph(x, layout = "fr") +
+    geom_edge_link(color = "gray50",
+                   alpha = 0.5) +
+    geom_node_point(color = "lightcoral",
+                    size = 5) +
+    geom_node_text(aes(label = name),
+                   repel = T,
+                   size = 5,
+                   family = "nanumgothic") +
+    theme_graph()
+}
+
+
+# 유의어 처리하기
+# 진보 매체 처리 comment <- comment %>%
+  mutate(word = ifelse(str_detect(word, "감독") &
+                      !str_detect(word, "감독상"), "봉준호", word), 
+         word = ifelse(word == "히로부", "이토", word),
+         word = ifelse(word == "히로부미", "이토", word),
+         word = ifelse(word == "김좌", "김좌진", word),
+         word = ifelse(word == "의사", "안중근", word),
+         word = ifelse(word == "신조", "아베", word),
+         word = ifelse(word == "요시히데", "스가", word),
+         word = ifelse(word == "문재", "문재인", word),
+         word = ifelse(word == "선생", "안중근", word),
+         word = ifelse(word == "이승", "이승만", word))
+
+# 보수 매체 처리 
+  comment <- comment %>%
+  mutate(word = ifelse(str_detect(word, "감독") &
+                      !str_detect(word, "감독상"), "봉준호", word), 
+         word = ifelse(word == "히로부", "이토", word),
+         word = ifelse(word == "히로부미", "이토", word),
+         word = ifelse(word == "김좌", "김좌진", word),
+         word = ifelse(word == "의사", "안중근", word),
+         word = ifelse(word == "신조", "아베", word),
+         word = ifelse(word == "요시히데", "스가", word),
+         word = ifelse(word == "문재", "문재인", word),
+         word = ifelse(word == "최재", "최재형", word),
+         word = ifelse(word == "박성", "박성재", word),
+         word = ifelse(word == "서경", "서경덕", word),
+         word = ifelse(word == "이승", "이승만", word),
+         word = ifelse(word == "선생", "안중근", word))
+
+
+  comment[- grep("윤호진", comment$word),]
+  comment[- grep("가상현", comment$word),]
+  comment[- grep("송성각", comment$word),]
+  comment[- grep("린다", comment$word),]
+  comment[- grep("라이너", comment$word),]
+  comment[- grep("김종덕", comment$word),]
+  comment[- grep("옵스트", comment$word),]
+  comment[- grep("방송인", comment$word),]
+  comment[- grep("인터스텔라", comment$word),]
+
+idx = is.na(comment$word)
+delete_vertices(graph, v)
+
+      
+         
+### 
+# memory.size(max = TRUE)    # OS에서 얻은 최대 메모리 크기 = OS로부터 R이 사용 가능한 메모리
+# memory.size(max = FALSE)   # 현재 사용중인 메모리 크기
+# memory.limit(size = NA)    # 컴퓨터의 최대 메모리 한계치 
+
+# 컴퓨터의 최대 메모리 한계치 약 49GB로 높이기
+#memory.limit(size = 50000)   
+
+
+# 단어 동시 출현 빈도 구하기
+pair <- comment %>%
+  pairwise_count(item = word,
+                 feature = id,
+                 sort = T)
+pair[- grep(" ", pair$item1),] # 빈 행 지우기
+pair[- grep(" ", pair$item2),] # 빈 행 지우기
+pair[- grep("윤호진", pair$item1),] # 이상한 행 지우기
+  pair[- grep("가상현", pair$item2),]
+  pair[- grep("송성각", pair$item1),]
+  pair[- grep("린다", pair$item1),]
+  pair[- grep("라이너", pair$item1),]
+  pair[- grep("김종덕", pair$item1),]
+  pair[- grep("옵스트", pair$item1),]
+  pair[- grep("방송인", pair$item1),]
+  pair[- grep("인터스텔라", pair$item1),]
+
+
+
+  
+library(tidygraph)
+
+graph_comment <- pair %>%
+  filter(n >= 20) %>%
+  as_tbl_graph(directed = F) %>%
+  mutate(centrality = centrality_degree(),        # 연결 중심성
+         group = as.factor(group_infomap()))      # 커뮤니티
+
+graph_comment
+
+
+set.seed(1234)
+ggraph(graph_comment, layout = "fr") +      # 레이아웃
+  
+  geom_edge_link(color = "gray50",          # 엣지 색깔
+                 alpha = 0.5) +             # 엣지 명암
+  
+  geom_node_point(aes(size = centrality,    # 노드 크기
+                      color = group),       # 노드 색깔
+                  show.legend = F) +        # 범례 삭제
+  scale_size(range = c(5, 15)) +            # 노드 크기 범위
+  
+  geom_node_text(aes(label = name),         # 텍스트 표시
+                 repel = T,                 # 노드밖 표시
+                 size = 5,                  # 텍스트 크기
+                 family = "nanumgothic") +  # 폰트
+  
+  theme_graph()                             # 배경 삭제
+
+
+
+graph_comment %>%
+  filter(name == "박근혜")
+##############################################################################33
