@@ -1,0 +1,437 @@
+
+### 토픽 모델링: 진보와 보수에 따른 토픽의 차이 및 연도별 변화는?
+setwd("C:\\Users\\ULTR\\Desktop\\Text Mining\\Code_n_data\\Code_n_data\\section2")
+
+# 안중근 기사 키워드 불러오기
+### 진보 언론 20년간 키워드
+
+library(readr)
+library(dplyr)
+library(lubridate)
+library(stringr)
+library(textclean)
+
+#1 진보언론 20년만 추출
+raw_news_comment <- read_csv("example.csv", locale = 
+                               locale(encoding = "EUC-KR"))%>%
+                    mutate(키워드 = str_replace_all(키워드, "[^가-힣]", " "),
+                    키워드 = str_squish(키워드)) %>%
+                    filter(언론사=="한겨레" | 언론사=="경향신문")
+
+#2 연도 추출 
+yr <-  as.numeric(substring(raw_news_comment$일자, 1, 4))
+
+#3 연도 형성
+raw_news_comment <- raw_news_comment %>%
+                    mutate(year = yr)
+
+#4 특정 연도 확인 후 id 형성
+raw_news_comment <- raw_news_comment %>%
+                filter(year > 1999) %>% 
+                filter(year < 2021) %>%
+                mutate(id = row_number()) 
+### 연도 전처리 후에 id 부여 한다는 점에 주의할 것
+
+
+# -------------------------------------------------------------------------
+library(stringr)
+library(textclean)
+
+# 기본적인 전처리
+news_comment <- raw_news_comment %>%
+  mutate(키워드 = str_replace_all(키워드, "[^가-힣]", " "),
+         키워드 = str_squish(키워드)) %>%
+  filter(언론사=="한겨레" | 언론사=="경향신문") %>%
+  filter(1999 < year & year < 2021) %>%   # 진보언론의 지난 20년 간 데이터 분석
+
+  # 중복 댓글 제거
+  distinct(키워드, .keep_all = T) %>%
+  
+  # 짧은 문서 제거 - 3 단어 이상 추출
+  filter(str_count(키워드, boundary("word")) >= 3)
+
+# -------------------------------------------------------------------------
+library(tidytext)
+library(KoNLP)
+
+# 명사 추출
+comment <- news_comment %>%
+  unnest_tokens(input = 키워드,
+                output = word,
+                token = extractNoun,
+                drop = F) %>%
+  filter(str_count(word) > 1) %>%
+  
+  # 댓글 내 중복 단어 제거
+  group_by(id) %>%
+  distinct(word, .keep_all = T) %>%
+  ungroup() %>%
+  select(id, word)
+
+comment      # 시간 소요 
+View(comment)
+
+# -------------------------------------------------------------------------
+count_word <- comment %>% # 빈도가 너무 높은 뻔한 단어 제외
+  add_count(word) %>%
+  filter(n <= 200) %>%
+  select(-n)
+
+# -------------------------------------------------------------------------
+# 불용어, 유의어 확인하기
+count_word %>%
+  count(word, sort = T) %>%
+  print(n = 200)
+
+# -------------------------------------------------------------------------
+# 불용어 목록 만들기
+stopword <- c("")   # 모든 키워드가 중요하다고 판단함 
+
+
+# 불용어, 유의어 처리하기
+count_word <- count_word # 불용어 및 유의어가 없다고 판단함 # 
+
+# -------------------------------------------------------------------------
+count_word <- count_word %>%
+  anti_join(stopword, by = "word")
+
+
+# -------------------------------------------------------------------------
+# 문서별 단어 빈도 구하기
+count_word_doc <- count_word %>%
+  count(id, word, sort = T)
+
+count_word_doc
+
+### 토픽 모델링 만들기
+library(tm)
+
+# DTM 만들기
+dtm_comment <- count_word_doc %>%
+  cast_dtm(document = id, term = word, value = n)
+
+dtm_comment
+
+# 어떤 게 들어가있는지 확인함-------------------------------------------------------------------------
+as.matrix(dtm_comment)[1:8, 1:8]
+
+
+---------------------------### 토픽 모델링 구성
+library(topicmodels)
+
+# 토픽 모델 만들기
+lda_model <- LDA(dtm_comment,
+                 k = 15,
+                 method = "Gibbs",
+                 control = list(seed = 1234))
+lda_model
+
+# 모델 내용 확인
+glimpse(lda_model)
+
+### 몇 개 토픽이 최적인지 확인함
+# 06-6 --------------------------------------------------------------------
+
+# install.packages("ldatuning")
+library(ldatuning)
+
+models <- FindTopicsNumber(dtm = dtm_comment,
+                           topics = 2:20,
+                           return_models = T,
+                           control = list(seed = 1234))
+
+models %>%
+  select(topics, Griffiths2004)
+
+FindTopicsNumber_plot(models)  
+### 시간 소요됨: 몇 개의 토픽이 최적인가? 일단 17개로 확인해봄 
+# -------------------------------------------------------------------------
+ --------------------------------------------------------------------
+
+term_topic <- tidy(lda_model, matrix = "beta")
+term_topic         ### 시간 소요 됨
+
+
+# -------------------------------------------------------------------------
+# 토픽별 단어 수
+term_topic %>%
+  count(topic)
+
+# 토픽 1의 beta 합계
+term_topic %>%
+  filter(topic == 1) %>%
+  summarise(sum_beta = sum(beta))
+
+# -------------------------------------------------------------------------
+term_topic %>%
+  filter(term == "친구")
+
+
+# -------------------------------------------------------------------------
+term_topic %>%
+  filter(topic == 1) %>%
+  arrange(-beta)
+
+
+# -------------------------------------------------------------------------
+terms(lda_model, 20) %>%
+  data.frame()
+
+
+# -------------------------------------------------------------------------
+# 토픽별 beta 상위 10개 단어 추출
+top_term_topic <- term_topic %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 5)
+
+### 그래프로 그리기 
+
+library(scales)
+library(ggplot2)
+
+ggplot(top_term_topic,
+       aes(x = reorder_within(term, beta, topic),
+           y = beta,
+           fill = factor(topic))) +
+  geom_col(show.legend = F) +
+  facet_wrap(~ topic, scales = "free", ncol = 4) +
+  coord_flip() +
+  scale_x_reordered() +
+  scale_y_continuous(n.breaks = 4,
+                     labels = number_format(accuracy = .001)) + 
+  labs(x = NULL) +
+  theme(text = element_text(family = "nanumgothic"))
+
+
+# 06-4 --------------------------------------------------------------------
+
+doc_topic <- tidy(lda_model, matrix = "gamma")
+doc_topic
+
+# -------------------------------------------------------------------------
+# 문서 1의 gamma 합계
+doc_topic %>%
+  filter(document == 1) %>%
+  summarise(sum_gamma = sum(gamma))
+
+
+# -------------------------------------------------------------------------
+# 문서별로 확률이 가장 높은 토픽 추출
+doc_class <- doc_topic %>%
+  group_by(document) %>%
+  slice_max(gamma, n = 1)
+
+doc_class
+
+
+# -------------------------------------------------------------------------
+# integer로 변환
+doc_class
+doc_class$document <- as.integer(doc_class$document)
+
+# 원문에 토픽 번호 부여
+news_comment_topic <- news_comment %>%    ### 나는 raw에서 특정 연도를 제외하느 식으로 했으니 raw가 아님
+  left_join(doc_class, by = c("id" = "document"))
+
+# -------------------------------------------------------------------------
+# 결합 확인
+news_comment_topic %>%
+  select(id, topic)
+
+
+# -------------------------------------------------------------------------
+news_comment_topic %>%
+  count(topic)
+
+
+# -------------------------------------------------------------------------
+news_comment_topic <- news_comment_topic %>%
+  na.omit()
+
+
+# -------------------------------------------------------------------------
+top_terms <- term_topic %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 5, with_ties = F) %>%
+  summarise(term = paste(term, collapse = ", "))
+
+top_terms
+
+# -------------------------------------------------------------------------
+count_topic <- news_comment_topic %>%
+  count(topic)
+
+count_topic
+
+
+# -------------------------------------------------------------------------
+count_topic_word <- count_topic %>%
+  left_join(top_terms, by = "topic") %>%
+  mutate(topic_name = paste("Topic", topic))
+
+count_topic_word
+
+
+# -------------------------------------------------------------------------
+library('showtext')
+font_add_google('Noto Sans KR', 'notosanskr')
+showtext_auto()
+
+ggplot(count_topic_word,
+       aes(x = reorder(topic_name, n),
+           y = n,
+           fill = topic_name)) +
+  geom_col(show.legend = F) +
+  coord_flip() +
+  
+  geom_text(aes(label = n) ,                # 문서 빈도 표시
+            hjust = -0.03) +                 # 막대 밖에 표시
+  
+  geom_text(aes(label = term),              # 주요 단어 표시
+            hjust = 1.01,                   # 막대 안에 표시
+            col = "white",                  # 색깔
+            fontface = "bold",              # 두껍게
+            family = "notosanskr") +       # 폰트
+  
+  scale_y_continuous(expand = c(0, 0),      # y축-막대 간격 줄이기
+                     limits = c(0, 300)) +  # y축 범위
+  labs(x = NULL)
+
+# 06-5 --------------------------------------------------------------------
+
+comment_topic <- news_comment_topic %>%
+  arrange(-gamma)
+
+# -------------------------------------------------------------------------
+comment_topic %>%
+  select(gamma, 키워드)
+
+############################################################################
+# 토픽 13 내용 살펴보기
+comment_topic %>%
+  filter(topic == 8 & str_detect(키워드, "팀장")) %>%
+  head(50) %>%
+  pull(키워드)
+
+###
+토픽 이름 목록 만들기
+name_topic <- tibble(topic = 1:15,
+                     name = c("1. 작품상 수상 축하, 정치적 댓글 비판",
+                              "2. 수상 축하, 시상식 감상",
+                              "3. 조국 가족, 정치적 해석",
+                              "4. 새 역사 쓴 세계적인 영화",
+                              "5. 자랑스럽고 감사한 마음",
+                              "6. 놀라운 4관왕 수상",
+                              "7. 문화계 블랙리스트, 보수 정당 비판",
+                              "8. 한국의 세계적 위상",
+                              "9. 문화계 블랙리스트, 보수 정당 비판",
+                              "10. 문화계 블랙리스트, 보수 정당 비판",
+                              "11. 문화계 블랙리스트, 보수 정당 비판",
+                              "12. 문화계 블랙리스트, 보수 정당 비판",
+                              "13. 문화계 블랙리스트, 보수 정당 비판",
+                              "14. 문화계 블랙리스트, 보수 정당 비판",
+                              "15. 문화계 블랙리스트, 보수 정당 비판"))
+
+
+# -------------------------------------------------------------------------
+# 토픽 이름 결합하기
+top_term_topic_name <- top_term_topic %>%
+  left_join(name_topic, name_topic, by = "topic")
+
+
+top_term_topic_name
+
+
+# -------------------------------------------------------------------------
+# 막대 그래프 만들기
+ggplot(top_term_topic_name,
+       aes(x = reorder_within(term, beta, name),
+           y = beta,
+           fill = factor(topic))) +
+  geom_col(show.legend = F) +
+  facet_wrap(~ name, scales = "free", ncol = 2) +
+  coord_flip() +
+  scale_x_reordered() +
+  
+  labs(title = "영화 기생충 아카데미상 수상 기사 댓글 토픽",
+       subtitle = "토픽별 주요 단어 Top 10",
+       x = NULL, y = NULL) +
+  
+  theme_minimal() +
+  theme(text = element_text(family = "nanumgothic"),
+        title = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+
+### news_comment_topic 기반으로 시계열 그래프 그리기
+R code of this video:
+  
+  set.seed(1023172)                            # Create random example data
+data ＜- round(data.frame(year = 2001:2025,
+                         ts1 = 1:25 + rnorm(25),
+                         ts2 = 30:6 + runif(25, 0, 10),
+                         ts3 = rnorm(25, 5, 5)))
+library(dplyr)
+
+tm1 <- news_comment_topic %>%
+       filter(topic ==1 ) %>%
+       select(year, topic) 
+       
+tm1 <- tm1 &>&
+       as.integer(tm1$topic)
+library(plyr)
+tm1 <-ddply(tm1, .(year), summarize, Sum=sum(year))
+
+
+t1 <- tm1 %>% 
+       group_by(year) %>%
+       summarize(Sum_tm1 = sum(tm1))
+       
+
+plot(news_comment_topic$year, 
+     news_comment_topic$topic,                       # Draw first time series
+     type = "l",
+     col = 2,
+     ylim = c(- 15, 40),
+     xlab = "Year",
+     ylab = "Values") %<%
+     filter(topic == 1)
+
+lines(news_comment_topic$year,                             # Draw second time series
+      news_comment_topic$topic,
+      type = "l",
+      col = 3) %<%
+      filter(topic == 2)
+
+lines(news_comment_topic$year,                             
+      news_comment_topic$topic,
+      type = "l",
+      col = 4) %<%
+      filter(topic == 3)
+
+legend("topright",                           # Add legend to plot
+       c("topic1", "topic2", "topic3"),
+       lty = 1,
+       col = 2:4)
+
+install.packages("reshape2")                 # Install reshape2 package
+library("reshape2")                          # Load reshape2 package
+
+data_long ＜- melt(data, id.vars = "year")    # Reshaping data to long format
+
+install.packages("ggplot2")                  # Install ggplot2 package
+library("ggplot2")                           # Load ggplot2 package
+
+ggplot(data_long,                            # Draw ggplot2 time series plot
+       aes(x = year,
+           y = value,
+           col = variable)) +
+  geom_line()
+
+
+
+
+
+
+
+
