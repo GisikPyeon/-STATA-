@@ -1,0 +1,658 @@
+### 토픽 모델링: 진보와 보수에 따른 토픽의 차이 및 연도별 변화는?
+setwd("C:\\Users\\ULTR\\Desktop\\Text Mining\\Code_n_data\\Code_n_data\\section2")
+
+### raw data에서 진보 20년만 추출
+#1 진보언론 20년만 추출
+library(dplyr)
+library(readr)
+raw_news_comment <- read_csv("example.csv", locale = 
+                               locale(encoding = "EUC-KR")) %>%
+  filter(언론사=="한겨레" | 언론사=="경향신문")
+
+#2 연도 추출 
+yr <-  as.numeric(substring(raw_news_comment$일자, 1, 4))
+
+#3 연도 형성
+raw_news_comment <- raw_news_comment %>%
+  mutate(year = yr)
+
+#4 특정 연도 확인
+raw_news_comment <- raw_news_comment %>%
+  filter(year > 1999) %>% 
+  filter(year < 2021)
+
+
+#5 '알림', '행정' 단어 전처리 
+library(tidyverse)``
+raw_news_comment <- raw_news_comment %>%
+  filter(str_detect(키워드, "알림", negate = TRUE)) %>%
+  filter(str_detect(키워드, "행정", negate = TRUE)) %>%
+  filter(str_detect(키워드, "산업", negate = TRUE)) %>%
+  filter(str_detect(키워드, "본부", negate = TRUE)) %>%
+  filter(str_detect(키워드, "부장", negate = TRUE)) %>%
+  filter(str_detect(키워드, "기업", negate = TRUE)) 
+
+grep("기업", raw_news_comment$키워드) # 제대로 전처리 됨? 
+  
+### 원하는 샘플만 추출: id는 깔끔하게 정리된 후에 
+raw_news_comment <- raw_news_comment %>%
+                    mutate(id = row_number())
+
+
+# -------------------------------------------------------------------------
+library(stringr)
+library(textclean)
+library(dplyr)
+
+# 기본적인 전처리
+news_comment <- raw_news_comment %>%
+  mutate(키워드 = str_replace_all(키워드, "[^가-힣]", " "),
+          키워드 = str_squish(키워드)) %>%
+  
+  # 중복 댓글 제거
+  distinct(키워드, .keep_all = T) %>%
+  
+  # 짧은 문서 제거 - 3 단어 이상 추출
+  filter(str_count(키워드, boundary("word")) >= 3)
+
+# -------------------------------------------------------------------------
+library(tidytext)
+library(KoNLP)
+
+# 명사 추출
+comment <- news_comment %>%
+  unnest_tokens(input = 키워드,
+                output = word,
+                token = extractNoun,
+                drop = F) %>%
+  filter(str_count(word) > 1) %>%
+  
+  # 댓글 내 중복 단어 제거
+  group_by(id) %>%
+  distinct(word, .keep_all = T) %>%
+  ungroup() %>%
+  select(id, word)
+
+comment
+
+# -------------------------------------------------------------------------
+count_word <- comment %>%
+  add_count(word) %>%
+  filter(n <= 200) %>%
+  select(-n)
+
+####
+# -------------------------------------------------------------------------
+# 불용어, 유의어 확인하기
+count_word %>%
+  count(word, sort = T) %>%
+  print(n = 200)
+
+
+# -------------------------------------------------------------------------
+# 불용어 목록 만들기
+stopword <- c("그동안", "차례", "인간", "우리나라", "자체", "등장", "가능",
+              "차례", "자체", "경제", "년대", "만큼", "하루", "거리",
+              "일반", "지난달", "여기", "까지", "이거", "하신", "만큼")
+
+
+# -------------------------------------------------------------------------
+# 불용어, 유의어 처리하기
+count_word <- count_word %>%
+  filter(!word %in% stopword) %>%
+  mutate(word = recode(word,
+                       "동양" = "동양평화론",
+                       "주의" = "아시아주의",
+                       "이승" = "이승만",
+                       "문재" = "문재인",
+                       "한국의" = "한국",
+                       "그네" = "박근혜",
+                       "추카" = "축하",
+                       "정경" = "정경심",
+                       "방탄" = "방탄소년단"))
+
+# -------------------------------------------------------------------------
+# tibble 구조로 불용어 목록 만들기
+stopword <- tibble(word = c("그동안", "차례", "인간", "우리나라", "자체", "등장", "가능",
+              "차례", "자체", "경제", "년대", "만큼", "하루", "거리",
+              "일반", "지난달", "여기", "까지", "이거", "하신", "만큼"))
+
+# 불용어 목록 저장하기
+library(readr)
+write_csv(stopword, "stopword.csv")
+
+# 불용어 목록 불러오기
+stopword <- read_csv("stopword.csv")
+
+# 불용어 제거하기
+count_word <- count_word %>%
+  filter(!word %in% stopword$word)
+
+# -------------------------------------------------------------------------
+count_word <- count_word %>%
+  anti_join(stopword, by = "word")
+
+
+# -------------------------------------------------------------------------
+# 문서별 단어 빈도 구하기
+count_word_doc <- count_word %>%
+  count(id, word, sort = T)
+
+count_word_doc
+
+# -------------------------------------------------------------------------
+library("tm")
+
+# DTM 만들기
+dtm_comment <- count_word_doc %>%
+  cast_dtm(document = id, term = word, value = n)
+
+dtm_comment
+
+# -------------------------------------------------------------------------
+as.matrix(dtm_comment)[1:8, 1:8]
+
+# -------------------------------------------------------------------------
+library(topicmodels)
+
+# 토픽 모델 만들기
+lda_model <- LDA(dtm_comment,
+                 k = 15,
+                 method = "Gibbs",
+                 control = list(seed = 1234))
+lda_model
+
+# 모델 내용 확인
+glimpse(lda_model)
+
+# 06-3 --------------------------------------------------------------------
+
+term_topic <- tidy(lda_model, matrix = "beta")
+term_topic
+
+
+# -------------------------------------------------------------------------
+# 토픽별 단어 수
+term_topic %>%
+  count(topic)
+
+# 토픽 1의 beta 합계
+term_topic %>%
+  filter(topic == 1) %>%
+  summarise(sum_beta = sum(beta))
+
+# -------------------------------------------------------------------------
+# 스킵 term_topic %>%
+#  filter(term == "작품상")
+
+# -------------------------------------------------------------------------
+term_topic %>%
+  filter(topic == 6) %>%
+  arrange(-beta)
+
+
+# -------------------------------------------------------------------------
+terms(lda_model, 20) %>%
+  data.frame()
+
+# -------------------------------------------------------------------------
+# 토픽별 beta 상위 10개 단어 추출
+top_term_topic <- term_topic %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 20)
+
+###
+library(scales)
+library(ggplot2)
+
+ggplot(top_term_topic,
+       aes(x = reorder_within(term, beta, topic),
+           y = beta,
+           fill = factor(topic))) +
+  geom_col(show.legend = F) +
+  facet_wrap(~ topic, scales = "free", ncol = 4) +
+  coord_flip() +
+  scale_x_reordered() +
+  scale_y_continuous(n.breaks = 4,
+                     labels = number_format(accuracy = .01)) + 
+  labs(x = NULL) +
+  theme(text = element_text(family = "nanumgothic"))
+
+# 06-4 --------------------------------------------------------------------
+
+doc_topic <- tidy(lda_model, matrix = "gamma")
+doc_topic
+
+
+# -------------------------------------------------------------------------
+doc_topic %>%
+  count(topic)
+
+# 문서 1의 gamma 합계
+doc_topic %>%
+  filter(document == 1) %>%
+  summarise(sum_gamma = sum(gamma))
+
+
+# -------------------------------------------------------------------------
+# 문서별로 확률이 가장 높은 토픽 추출
+doc_class <- doc_topic %>%
+  group_by(document) %>%
+  slice_max(gamma, n = 1)
+
+doc_class
+
+
+# -------------------------------------------------------------------------
+# integer로 변환
+doc_class$document <- as.integer(doc_class$document)
+
+# 원문에 토픽 번호 부여
+
+news_comment_topic <- raw_news_comment %>%
+  left_join(doc_class, by = c("id" = "document"))
+
+
+# -------------------------------------------------------------------------
+# 결합 확인
+news_comment_topic %>%
+  select(id, topic)
+
+
+# -------------------------------------------------------------------------
+news_comment_topic %>%
+  count(topic)
+###########여기까지 돌린다 ###############
+
+#### 보수 매체는 어떠한가? 
+### 토픽 모델링: 진보와 보수에 따른 토픽의 차이 및 연도별 변화는?
+setwd("C:\\Users\\ULTR\\Desktop\\Text Mining\\Code_n_data\\Code_n_data\\section2")
+
+### raw data에서 진보 20년만 추출
+#1 보수언론 20년만 추출
+library(dplyr)
+library(readr)
+raw_news_comment <- read_csv("example.csv", locale = 
+                               locale(encoding = "EUC-KR")) %>%
+  filter(언론사=="중앙일보" | 언론사=="조선일보" | 언론사=="동아일보")
+
+#2 연도 추출 
+yr <-  as.numeric(substring(raw_news_comment$일자, 1, 4))
+
+#3 연도 형성
+raw_news_comment <- raw_news_comment %>%
+  mutate(year = yr)
+
+#4 특정 연도 확인
+raw_news_comment <- raw_news_comment %>%
+  filter(year > 1999) %>% 
+  filter(year < 2021)
+
+
+#5 '인터스텔라', '린다', '별세', '인사' 단어 전처리 
+library(tidyverse)
+raw_news_comment <- raw_news_comment %>%
+  filter(str_detect(키워드, "인테스텔라", negate = TRUE)) %>%
+  filter(str_detect(키워드, "린다", negate = TRUE)) %>%
+  filter(str_detect(키워드, "옵스트", negate = TRUE)) %>%
+  filter(str_detect(키워드, "제작자", negate = TRUE)) %>%
+  filter(str_detect(키워드, "유작전", negate = TRUE)) %>%
+  filter(str_detect(키워드, "별세", negate = TRUE)) %>%
+  filter(str_detect(키워드, "본부", negate = TRUE)) %>%
+  filter(str_detect(키워드, "관리", negate = TRUE)) %>%
+  filter(str_detect(키워드, "친구", negate = TRUE)) %>%
+  filter(str_detect(키워드, "소리", negate = TRUE)) %>%
+  filter(str_detect(키워드, "시절", negate = TRUE)) %>%
+  filter(str_detect(키워드, "총장", negate = TRUE)) %>%
+  filter(str_detect(키워드, "과장", negate = TRUE))
+  
+
+
+grep("과장", raw_news_comment$키워드) # 제대로 전처리 됨? 
+
+### 원하는 샘플만 추출: id는 깔끔하게 정리된 후에 
+raw_news_comment <- raw_news_comment %>%
+  dplyr::mutate(id = row_number())
+
+# -------------------------------------------------------------------------
+library(stringr)
+library(textclean)
+library(dplyr)
+
+# 기본적인 전처리
+news_comment <- raw_news_comment %>%
+  mutate(키워드 = str_replace_all(키워드, "[^가-힣]", " "),
+            키워드 = str_squish(키워드)) %>%
+  
+  # 중복 댓글 제거
+  distinct(키워드, .keep_all = T) %>%
+  
+  # 짧은 문서 제거 - 3 단어 이상 추출
+  filter(str_count(키워드, boundary("word")) >= 3)
+# -------------------------------------------------------------------------
+library(tidytext)
+library(KoNLP)
+
+# 명사 추출
+comment <- news_comment %>%
+  unnest_tokens(input = 키워드,
+                output = word,
+                token = extractNoun,
+                drop = F) %>%
+  filter(str_count(word) > 1) %>%
+  
+  # 댓글 내 중복 단어 제거
+  group_by(id) %>%
+  distinct(word, .keep_all = T) %>%
+  ungroup() %>%
+  select(id, word)
+
+comment
+
+# -------------------------------------------------------------------------
+count_word <- comment %>%
+  add_count(word) %>%
+  filter(n <= 200) %>%
+  select(-n)
+
+####
+# -------------------------------------------------------------------------
+# 불용어, 유의어 확인하기
+count_word %>%
+  count(word, sort = T) %>%
+  print(n = 200)
+
+
+# -------------------------------------------------------------------------
+# 불용어 목록 만들기
+stopword <- c("그동안", "차례", "인간", "우리나라", "자체", "등장", "가능",
+              "차례", "자체", "경제", "년대", "만큼", "하루", "거리",
+              "일반", "지난달", "여기", "까지", "이거", "하신", "만큼")
+
+
+# -------------------------------------------------------------------------
+# 불용어, 유의어 처리하기
+count_word <- count_word %>%
+  filter(!word %in% stopword) %>%
+  mutate(word = recode(word,
+                       "동양" = "동양평화론",
+                       "주의" = "아시아주의",
+                       "이승" = "이승만",
+                       "문재" = "문재인",
+                       "이상" = "이상설",
+                       "연해" = "연해주",
+                       "추카" = "축하",
+                       "정경" = "정경심",
+                       "방탄" = "방탄소년단"))
+
+# -------------------------------------------------------------------------
+# tibble 구조로 불용어 목록 만들기
+stopword <- tibble(word = c("그동안", "차례", "인간", "우리나라", "자체", "등장", "가능",
+                            "차례", "자체", "경제", "년대", "만큼", "하루", "거리",
+                            "일반", "지난달", "여기", "까지", "이거", "하신", "만큼"))
+
+# 불용어 목록 저장하기
+library(readr)
+write_csv(stopword, "stopword.csv")
+
+# 불용어 목록 불러오기
+stopword <- read_csv("stopword.csv")
+
+# 불용어 제거하기
+count_word <- count_word %>%
+  filter(!word %in% stopword$word)
+
+# -------------------------------------------------------------------------
+count_word <- count_word %>%
+  anti_join(stopword, by = "word")
+
+
+# -------------------------------------------------------------------------
+# 문서별 단어 빈도 구하기
+count_word_doc <- count_word %>%
+  count(id, word, sort = T)
+
+count_word_doc
+
+# -------------------------------------------------------------------------
+library("tm")
+
+# DTM 만들기
+dtm_comment <- count_word_doc %>%
+  cast_dtm(document = id, term = word, value = n)
+
+dtm_comment
+
+# -------------------------------------------------------------------------
+as.matrix(dtm_comment)[1:8, 1:8]
+
+# -------------------------------------------------------------------------
+library(topicmodels)
+
+# 토픽 모델 만들기
+lda_model <- LDA(dtm_comment,
+                 k = 15,
+                 method = "Gibbs",
+                 control = list(seed = 1234))
+lda_model
+
+# 모델 내용 확인
+glimpse(lda_model)
+
+# 06-3 --------------------------------------------------------------------
+
+term_topic <- tidy(lda_model, matrix = "beta")
+term_topic
+
+
+# -------------------------------------------------------------------------
+# 토픽별 단어 수
+term_topic %>%
+  dplyr::count(topic)
+
+# 토픽 1의 beta 합계
+term_topic %>%
+  filter(topic == 1) %>%
+  summarise(sum_beta = sum(beta))
+
+# -------------------------------------------------------------------------
+# 스킵 term_topic %>%
+#  filter(term == "작품상")
+
+# -------------------------------------------------------------------------
+term_topic %>%
+  filter(topic == 6) %>%
+  arrange(-beta)
+
+
+# -------------------------------------------------------------------------
+terms(lda_model, 20) %>%
+  data.frame()      ### 가장 핵심이 되는 단어들 구함
+
+### 의문점: 토픽 1 -> 관리, 정보, 안전, 환경, 정책, 대구는 뭣이라고 
+#           토픽5 <-  소개, 관심, 이해, 온라인은 무엇? 
+            # 토픽7 <-  친구, 소리, 시절, 세상, 아버지, 순간, 가슴, 가족? 
+
+# -------------------------------------------------------------------------
+# 토픽별 beta 상위 10개 단어 추출
+top_term_topic <- term_topic %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 10)
+
+###
+library(scales)
+library(ggplot2)
+
+ggplot(top_term_topic,
+       aes(x = reorder_within(term, beta, topic),
+           y = beta,
+           fill = factor(topic))) +
+  geom_col(show.legend = F) +
+  facet_wrap(~ topic, scales = "free", ncol = 4) +
+  coord_flip() +
+  scale_x_reordered() +
+  scale_y_continuous(n.breaks = 4,
+                     labels = number_format(accuracy = .01)) + 
+  labs(x = NULL) +
+  theme(text = element_text(family = "nanumgothic"))
+
+# 06-4 --------------------------------------------------------------------
+
+doc_topic <- tidy(lda_model, matrix = "gamma")
+doc_topic
+
+
+# -------------------------------------------------------------------------
+doc_topic %>%
+  dplyr::count(topic)
+
+# 문서 1의 gamma 합계
+doc_topic %>%
+  filter(document == 1) %>%
+  summarise(sum_gamma = sum(gamma))
+
+
+# -------------------------------------------------------------------------
+# 문서별로 확률이 가장 높은 토픽 추출
+doc_class <- doc_topic %>%
+  group_by(document) %>%
+  slice_max(gamma, n = 1)
+
+doc_class
+
+
+# -------------------------------------------------------------------------
+# integer로 변환
+doc_class$document <- as.integer(doc_class$document)
+
+# 원문에 토픽 번호 부여
+news_comment_topic <- raw_news_comment %>%
+  left_join(doc_class, by = c("id" = "document"))
+
+
+# -------------------------------------------------------------------------
+# 결합 확인
+news_comment_topic <-  news_comment_topic %>%
+                        select(id, topic, 키워드)
+
+### 여기에서 오류 생김
+library(plyr)
+news_comment_topic %>% 
+  dplyr::count(topic)
+### 오류가 생겨서 ::를 추가
+
+
+# -------------------------------------------------------------------------
+## 위의 값이 사라지는 오류 발생
+news_comment_topic <- news_comment_topic %>%
+                      na.omit()
+
+## 하나라도 없으면 모두 삭제하는 형식이기 떄문에 오류가 생김 
+# -------------------------------------------------------------------------
+
+doc_topic %>%
+  group_by(document) %>%
+  slice_max(gamma, n = 1) %>%
+  dplyr::count(document) %>%
+  filter(n >= 2)
+
+
+# -------------------------------------------------------------------------
+set.seed(1234)
+doc_class_unique <- doc_topic %>%
+  group_by(document) %>%
+  slice_max(gamma, n = 1) %>%
+  slice_sample(n = 1)
+
+doc_class_unique
+
+
+# -------------------------------------------------------------------------
+# 문서 빈도 구하기
+doc_class_unique %>%
+  dplyr::count(document)#, sort = T)
+
+
+# -------------------------------------------------------------------------
+top_terms <- term_topic %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 6, with_ties = F) %>%
+  summarise(term = paste(term, collapse = ", "))
+
+top_terms
+
+# 1 관리, 정보, 안전, 환경, 정책, 대구, 과학, 본부, 과장, 산업 
+# 4 행동, 단체, 반대, 행위, 정권, 실제, 정치인, 시민, 요구, 경찰  
+# 5  소개, 관심, 이해, 사랑, 일보, 제작, 온라인, 각종, 언론, 대상 
+# 8 8 친구, 소리, 시절, 세상, 아버지, 순간, 가슴, 가족, 세월, 경험
+
+# -------------------------------------------------------------------------
+count_topic <- news_comment_topic %>%
+  dplyr::count(topic)
+
+count_topic
+
+
+# -------------------------------------------------------------------------
+count_topic_word <- count_topic %>%
+  left_join(top_terms, by = "topic") %>%
+  mutate(topic_name = paste("Topic", topic))
+
+count_topic_word
+
+# -------------------------------------------------------------------------
+ggplot(count_topic_word,
+       aes(x = reorder(topic_name, n),
+           y = n,
+           fill = topic_name)) +
+  geom_col(show.legend = F) +
+  coord_flip() +
+  
+  geom_text(aes(label = n) ,                # 문서 빈도 표시
+            hjust = -0.2) +                 # 막대 밖에 표시
+  
+  geom_text(aes(label = term),              # 주요 단어 표시
+            hjust = 1.03,                   # 막대 안에 표시
+            col = "white",                  # 색깔
+            fontface = "bold",              # 두껍게
+            family = "nanumgothic") +       # 폰트
+  
+  scale_y_continuous(expand = c(0, 0),      # y축-막대 간격 줄이기
+                     limits = c(0, 820)) +  # y축 범위
+  labs(x = NULL)
+
+
+# 06-5 --------------------------------------------------------------------
+
+comment_topic <- news_comment_topic %>%
+  mutate(키워드 = str_squish(replace_html(키워드))) %>%
+  arrange(-gamma)
+
+# -------------------------------------------------------------------------
+comment_topic %>%
+  select(gamma, 키워드)
+
+
+# -------------------------------------------------------------------------
+### 의문점: 토픽 1 -> 관리, 정보, 안전, 환경, 정책, 대구는 뭣이라고 
+            #◆법무부<고위공무원 전보>: 인사, 관리, 정보, 안전 모두 나가리 
+#           토픽5 <-  소개, 관심, 이해, 온라인은 무엇? 
+#           토픽8 <-  친구, 소리, 시절, 세상, 아버지, 순간, 가슴, 가족? 
+# 별세, 전보, 인사, 국장급, 과장급
+# 유작전, 
+# 토픽 1 내용 살펴보기
+comment_topic %>%
+  filter(topic == 8& str_detect(키워드, "세상")) %>%
+  head(50) %>%
+  pull(키워드)
+
+comment_topic %>%
+  filter(topic == 1 & str_detect(reply, "진심")) %>%
+  head(50) %>%
+  pull(reply)
+
+comment_topic %>%
+  filter(topic == 1 & str_detect(reply, "정치")) %>%
+  head(50) %>%
+  pull(reply)
+
