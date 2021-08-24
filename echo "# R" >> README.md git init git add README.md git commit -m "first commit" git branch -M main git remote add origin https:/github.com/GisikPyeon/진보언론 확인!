@@ -1,0 +1,730 @@
+#### 진보 매체는 어떠한가? 
+### 토픽 모델링: 진보와 보수에 따른 토픽의 차이 및 연도별 변화는?
+setwd("C:\\Users\\ULTR\\Desktop\\Text Mining\\Code_n_data\\Code_n_data\\section2")
+
+### raw data에서 보수 20년만 추출
+#1 진보언론 20년만 추출
+library(dplyr)
+library(readr)
+raw_news_comment <- read_csv("example.csv", locale = 
+                               locale(encoding = "EUC-KR")) %>%
+  filter(언론사=="한겨레" | 언론사=="경향신문")
+
+#2 연도 추출 
+yr <-  as.numeric(substring(raw_news_comment$일자, 1, 4))
+
+#3 연도 형성
+raw_news_comment <- raw_news_comment %>%
+  mutate(year = yr)
+
+#4 특정 연도 확인
+raw_news_comment <- raw_news_comment %>%
+  filter(year > 1999) %>% 
+  filter(year < 2021)
+
+
+#5 '알림', '행정', '별세', '인사' 단어 전처리 
+library(tidyverse)
+raw_news_comment <- raw_news_comment <- raw_news_comment %>%
+  filter(str_detect(키워드, "본부", negate = TRUE)) %>%
+  filter(str_detect(키워드, "부장", negate = TRUE)) %>%
+  filter(str_detect(키워드, "과장", negate = TRUE)) %>%
+  filter(str_detect(키워드, "기업", negate = TRUE)) %>%
+  filter(str_detect(키워드, "알림", negate = TRUE)) %>%
+  filter(str_detect(키워드, "행정", negate = TRUE)) %>%
+  filter(str_detect(키워드, "산업", negate = TRUE)) %>%
+  filter(str_detect(키워드, "별세", negate = TRUE)) %>%
+  filter(str_detect(키워드, "영화", negate = TRUE)) %>%
+  filter(str_detect(키워드, "세월호", negate = TRUE)) %>%   # 안중근 학생, 세월호
+  filter(str_detect(키워드, "세월", negate = TRUE)) 
+
+grep("과장", raw_news_comment$키워드) # 제대로 전처리 됨? 
+
+### 원하는 샘플만 추출: id는 깔끔하게 정리된 후에 
+raw_news_comment <- raw_news_comment %>%
+  dplyr::mutate(id = row_number())
+
+# -------------------------------------------------------------------------
+library(stringr)
+library(textclean)
+library(dplyr)
+
+# 기본적인 전처리
+news_comment <- raw_news_comment %>%
+  mutate(키워드 = str_replace_all(키워드, "[^가-힣]", " "),
+            키워드 = str_squish(키워드)) %>%
+  
+  # 중복 댓글 제거
+  distinct(키워드, .keep_all = T) %>%
+  
+  # 짧은 문서 제거 - 3 단어 이상 추출
+  filter(str_count(키워드, boundary("word")) >= 3)
+# -------------------------------------------------------------------------
+library(tidytext)
+library(KoNLP)
+
+# 명사 추출
+comment <- news_comment %>%
+  unnest_tokens(input = 키워드,
+                output = word,
+                token = extractNoun,
+                drop = F) %>%
+  filter(str_count(word) > 1) %>%
+  
+  # 댓글 내 중복 단어 제거
+  group_by(id) %>%
+  distinct(word, .keep_all = T) %>%
+  ungroup() %>%
+  select(id, word)
+
+comment #시간 소요 
+
+# -------------------------------------------------------------------------
+count_word <- comment %>%
+  add_count(word) %>%
+  filter(n <= 200) %>%
+  select(-n)
+
+####
+# -------------------------------------------------------------------------
+# 불용어, 유의어 확인하기
+count_word %>%
+  count(word, sort = T) %>%
+  print(n = 200)
+        
+# 불용어 목록 만들기
+stopword <- c("그동안", "차례", "인간", "우리나라", "자체", "등장", "가능",
+              "차례", "자체", "경제", "년대", "만큼", "하루", "거리",
+              "일반", "지난달", "여기", "까지", "이거", "하신", "만큼","사람",
+              "생각", "자신", "시작", "정도", "자리", "중요", "사이", "가능", 
+              "마련", "년도", "포함", "마지막", "지난달", "정도", "사람들",
+              "자리", "사이", "대상", "내년", "대상", "확인", "오늘", "하루",
+              "강제", "자체", "각종", "주변", "오늘", "아들", "시절", "생활",
+              "학교", "중앙", "전시", "그림", "작품", "윤손하", "벤허", "중생",
+              "모세", "사기열전", "수메르", "바흐", "경향신문", "로펌", "가지")
+
+
+
+# -------------------------------------------------------------------------
+
+
+# -------------------------------------------------------------------------
+# 불용어, 유의어 처리하기
+count_word <- count_word %>%
+  filter(!word %in% stopword) %>%
+  mutate(word = recode(word,
+                       "동양" = "동양평화론",
+                       "주의" = "아시아주의",
+                       "이승" = "이승만",
+                       "문재" = "문재인",
+                       "이상" = "이상설",
+                       "연해" = "연해주",
+                       "공동" = "공동발굴",
+                       "정경" = "정경심",
+                       "방탄" = "방탄소년단"))
+
+### 시간 소요 
+# -------------------------------------------------------------------------
+# tibble 구조로 불용어 목록 만들기
+stopword <- tibble(word = # 불용어 목록 만들기
+                     stopword <- c("그동안", "차례", "인간", "우리나라", "자체", "등장", "가능",
+                                   "차례", "자체", "경제", "년대", "만큼", "하루", "거리",
+                                   "일반", "지난달", "여기", "까지", "이거", "하신", "만큼","사람",
+                                   "생각", "자신", "시작", "정도", "자리", "중요", "사이", "가능", 
+                                   "마련", "년도", "포함", "마지막", "지난달", "정도", "사람들",
+                                   "자리", "사이", "대상", "내년", "대상", "확인", "오늘", "하루",
+                                   "강제", "자체", "각종", "주변", "오늘", "아들", "시절", "생활",
+                                   "학교", "중앙", "전시", "그림", "작품", "윤손하", "벤허", "중생",
+                                   "모세", "사기열전", "수메르", "바흐", "경향신문", "로펌", "가지"))
+
+
+# 불용어 목록 저장하기
+library(readr)
+write_csv(stopword, "stopword.csv")
+
+# 불용어 목록 불러오기
+stopword <- read_csv("stopword.csv")
+
+# 불용어 제거하기
+count_word <- count_word %>%
+  filter(!word %in% stopword$word)
+
+
+# -------------------------------------------------------------------------
+count_word <- count_word %>%
+  anti_join(stopword, by = "word")
+
+
+# -------------------------------------------------------------------------
+# 문서별 단어 빈도 구하기
+#You likely have another package (loaded after dplyr) that defines a count function. Plyr is one possibility. You can find out by typing "count" and seeing what prints (at the end will be "namespace:something")
+
+#To solve this you can restart R, and be sure to load that package before dplyr, not after
+#library(dplyr)
+count_word_doc <- count_word %>%
+  count(id, word, sort = T) 
+
+count_word_doc
+# -------------------------------------------------------------------------
+library("tm")
+
+# DTM 만들기
+dtm_comment <- count_word_doc %>%
+  cast_dtm(document = id, term = word, value = n)
+
+dtm_comment
+
+# -------------------------------------------------------------------------
+as.matrix(dtm_comment)[1:8, 1:8]
+
+# -------------------------------------------------------------------------
+library(topicmodels)
+
+# 토픽 모델 만들기
+lda_model <- LDA(dtm_comment,
+                 k = 12,
+                 method = "Gibbs",
+                 control = list(seed = 1234))
+lda_model
+
+# 모델 내용 확인
+glimpse(lda_model) ### 시간 소요 
+### 각 라인을 구분하고 어디서 오류가 발생할 수 있는지 쪼개서 본다
+
+# 06-3 --------------------------------------------------------------------
+
+term_topic <- tidy(lda_model, matrix = "beta")
+term_topic
+
+
+# -------------------------------------------------------------------------
+# 토픽별 단어 수
+term_topic %>%
+  dplyr::count(topic)
+
+# 토픽 1의 beta 합계
+term_topic %>%
+  filter(topic == 1) %>%
+  summarise(sum_beta = sum(beta))
+
+# -------------------------------------------------------------------------
+# 스킵 term_topic %>%
+#  filter(term == "작품상")
+
+# -------------------------------------------------------------------------
+term_topic %>%
+  filter(topic == 9) %>%
+  arrange(-beta)
+
+
+# -------------------------------------------------------------------------
+terms(lda_model, 20) %>%
+  data.frame()      ### 가장 핵심이 되는 단어들 구함
+
+### 의문점: 토픽 1 -> 관리, 정보, 안전, 환경, 정책, 대구는 뭣이라고 
+#           토픽5 <-  소개, 관심, 이해, 온라인은 무엇? 
+# 토픽7 <-  친구, 소리, 시절, 세상, 아버지, 순간, 가슴, 가족? 
+
+# -------------------------------------------------------------------------
+# 토픽별 beta 상위 10개 단어 추출
+top_term_topic <- term_topic %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 10)
+
+###
+library(scales)
+library(ggplot2)
+
+ggplot(top_term_topic,
+       aes(x = reorder_within(term, beta, topic),
+           y = beta,
+           fill = factor(topic))) +
+  geom_col(show.legend = F) +
+  facet_wrap(~ topic, scales = "free", ncol = 5) +
+  coord_flip() +
+  scale_x_reordered() +
+  scale_y_continuous(n.breaks = 4,
+                     labels = number_format(accuracy = .01)) + 
+  labs(x = NULL) +
+  theme(text = element_text(family = "nanumgothic"))
+
+### 토픽10: 사람, 자신, 마음, 사이 -> 어떤 의미인가?
+# 06-4 --------------------------------------------------------------------
+
+doc_topic <- tidy(lda_model, matrix = "gamma")
+doc_topic
+
+
+# -------------------------------------------------------------------------
+doc_topic %>%
+  dplyr::count(topic)
+
+# 문서 1의 gamma 합계
+doc_topic %>%
+  filter(document == 1) %>%
+  summarise(sum_gamma = sum(gamma))
+
+
+# -------------------------------------------------------------------------
+# 문서별로 확률이 가장 높은 토픽 추출
+doc_class <- doc_topic %>%
+  group_by(document) %>%
+  slice_max(gamma, n = 1)
+
+doc_class
+
+
+# -------------------------------------------------------------------------
+# integer로 변환
+doc_class$document <- as.integer(doc_class$document)
+
+# 원문에 토픽 번호 부여
+news_comment_topic <- raw_news_comment %>%
+  left_join(doc_class, by = c("id" = "document"))
+
+
+# -------------------------------------------------------------------------
+# 결합 확인
+news_comment_topic <-  news_comment_topic %>%
+  select(id, topic, 키워드, year)
+
+### 여기에서 오류 생김
+news_comment_topic %>% 
+  dplyr::count(topic)
+### 오류가 생겨서 ::를 추가
+
+
+# -------------------------------------------------------------------------
+## 위의 값이 사라지는 오류 발생
+news_comment_topic <- news_comment_topic %>%
+  na.omit()
+
+## 하나라도 없으면 모두 삭제하는 형식이기 떄문에 오류가 생김 
+
+## news_comment_topic 저장하기 
+library("openxlsx")
+write.xlsx(news_comment_topic, sheetName="sheet1", file="myexcel1.xlsx")
+
+data_cat<-news_comment_topic %>% 
+  group_by(topic, year) %>% 
+  summarise(total=n())
+
+data_cat_s<-data_cat %>% 
+  group_by(year) %>% 
+  mutate(percent=total/sum(total))
+
+data_cat_s$topic <- factor(data_cat_s$topic)
+
+gp <- ggplot(data_cat_s,aes(x=year, y=percent, group=topic,color=topic, shape=topic)) +
+  scale_shape_manual(values=1:nlevels(data_cat_s$topic)) +
+  labs(title = "안중근", x="연도", y="비율") +
+  geom_line()
+gp
+
+library(ggplot2)
+ggplot(data=data_cat_s, aes(x=year, y=percent, group=topic, color=topic)) +
+      geom_line()
+      scale_color_brewer(palette = 3)
+
+print(m)     
+
+      #or if(index==1) {geom_point()}+
+  geom_line()
+
+#######################
+    y14 <- data_cat %>% 
+    group_by(year) %>% 
+    mutate(percent=total/sum(total)) %>%
+    filter(year == 2014)
+  write.xlsx(y14, sheetName="sheet1", file="y14.xlsx") 
+  
+  y15 <- data_cat %>% 
+    group_by(year) %>% 
+    mutate(percent=total/sum(total)) %>%
+    filter(year == 2015)
+  write.xlsx(y15, sheetName="sheet1", file="y15.xlsx") 
+  
+  
+  y16 <- data_cat %>% 
+    group_by(year) %>% 
+    mutate(percent=total/sum(total)) %>%
+    filter(year == 2016)
+  write.xlsx(y16, sheetName="sheet1", file="y16.xlsx") 
+  
+  y17 <- data_cat %>% 
+    group_by(year) %>% 
+    mutate(percent=total/sum(total)) %>%
+    filter(year == 2017)
+  write.xlsx(y17, sheetName="sheet1", file="y17.xlsx") 
+  
+  
+  
+  
+  
+  
+ t01 <- data_cat %>% 
+   group_by(year) %>% 
+   mutate(percent=total/sum(total)) %>%
+   filter(topic == 1)
+ write.xlsx(y00, sheetName="sheet1", file="01.xlsx")
+ 
+ t02 <- data_cat %>% 
+   group_by(year) %>% 
+   mutate(percent=total/sum(total)) %>%
+   filter(topic == 2)
+ write.xlsx(y00, sheetName="sheet1", file="02.xlsx")
+ 
+ t03 <- data_cat %>% 
+   group_by(year) %>% 
+   mutate(percent=total/sum(total)) %>%
+   filter(topic == 3)
+ write.xlsx(y00, sheetName="sheet1", file="03.xlsx")
+ 
+ t04 <- data_cat %>% 
+   group_by(year) %>% 
+   mutate(percent=total/sum(total)) %>%
+   filter(topic == 4)
+ write.xlsx(y00, sheetName="sheet1", file="04.xlsx")
+ 
+ t05 <- data_cat %>% 
+   group_by(year) %>% 
+   mutate(percent=total/sum(total)) %>%
+   filter(topic == 5)
+ write.xlsx(y00, sheetName="sheet1", file="05.xlsx")
+ 
+ t06 <- data_cat %>% 
+   group_by(year) %>% 
+   mutate(percent=total/sum(total)) %>%
+   filter(topic == 6)
+ write.xlsx(y00, sheetName="sheet1", file="06.xlsx")
+ 
+ 
+ t07 <- data_cat %>% 
+   group_by(year) %>% 
+   mutate(percent=total/sum(total)) %>%
+   filter(topic == 7)
+ write.xlsx(y00, sheetName="sheet1", file="07.xlsx")
+ 
+ t08 <- data_cat %>% 
+   group_by(year) %>% 
+   mutate(percent=total/sum(total)) %>%
+   filter(topic == 8)
+ write.xlsx(y00, sheetName="sheet1", file="08.xlsx")
+ 
+ 
+ t09 <- data_cat %>% 
+   group_by(year) %>% 
+   mutate(percent=total/sum(total)) %>%
+   filter(topic == 9)
+ write.xlsx(y00, sheetName="sheet1", file="09.xlsx")
+ 
+ 
+ t10 <- data_cat %>% 
+   group_by(year) %>% 
+   mutate(percent=total/sum(total)) %>%
+   filter(topic == 10)
+ write.xlsx(y00, sheetName="sheet1", file="10.xlsx")
+ 
+ 
+ t11 <- data_cat %>% 
+   group_by(year) %>% 
+   mutate(percent=total/sum(total)) %>%
+   filter(topic == 11)
+ write.xlsx(y00, sheetName="sheet1", file="11.xlsx")
+ 
+ t12 <- data_cat %>% 
+   group_by(year) %>% 
+   mutate(percent=total/sum(total)) %>%
+   filter(topic == 12)
+ write.xlsx(y00, sheetName="sheet1", file="12.xlsx")
+ 
+ 
+
+ ----------
+
+t2<-data_cat %>% 
+  group_by(year) %>%
+  mutate(percent=total/sum(total)) %>%
+  filter(topic == 2)
+t3<-data_cat %>% 
+  group_by(year) %>%
+  mutate(percent=total/sum(total)) %>%
+  filter(topic == 3)
+t4<-data_cat %>% 
+  group_by(year) %>%
+  mutate(percent=total/sum(total)) %>%
+  filter(topic == 4)
+t5<-data_cat %>% 
+  group_by(year) %>%
+  mutate(percent=total/sum(total)) %>%
+  filter(topic == 5)
+t6<-data_cat %>% 
+  group_by(year) %>%
+  mutate(percent=total/sum(total)) %>%
+  filter(topic == 6)
+t7<-data_cat %>% 
+  group_by(year) %>%
+  mutate(percent=total/sum(total)) %>%
+  filter(topic == 7)
+t8<-data_cat %>% 
+  group_by(year) %>%
+  mutate(percent=total/sum(total)) %>%
+  filter(topic == 8)
+t9<-data_cat %>% 
+  group_by(year) %>%
+  mutate(percent=total/sum(total)) %>%
+  filter(topic == 9)
+t10<-data_cat %>% 
+  group_by(year) %>%
+  mutate(percent=total/sum(total)) %>%
+  filter(topic == 10)
+t11<-data_cat %>% 
+  group_by(year) %>%
+  mutate(percent=total/sum(total)) %>%
+  filter(topic == 11)
+t12<-data_cat %>% 
+  group_by(year) %>%
+  mutate(percent=total/sum(total)) %>%
+  filter(topic == 12)
+------------------------------
+  
+plot(t1$year,                              # Draw first time series
+       t1$percent,
+       type = "l",
+       col = 1,
+       xlim = c(2000, 2020),
+       ylim = c(0, 0.5),
+       xlab = "Year",
+       ylab = "Proportion")
+lines(t2$year,                             # Draw second time series
+      t2$percent,
+      type = "l",
+      col = 2)
+lines(t3$year,                             # Draw second time series
+      t3$percent,
+      type = "l",
+      col = 3)
+lines(t4$year,                             # Draw second time series
+      t4$percent,
+      type = "l",
+      col = 4)
+lines(t5$year,                             # Draw second time series
+      t5$percent,
+      type = "l",
+      col = 5)
+lines(t6$year,                             # Draw second time series
+      t6$percent,
+      type = "l",
+      col = 6)
+lines(t7$year,                             # Draw second time series
+      t7$percent,
+      type = "l", lty = 2,
+      col = 7))
+lines(t8$year,                             # Draw second time series
+      t8$percent,
+      type = "l", lty = 2,
+      col = 8)
+lines(t9$year,                             # Draw second time series
+      t9$percent,
+      type = "l", lty = 2,
+      col = 9)
+lines(t10$year,                             # Draw second time series
+      t10$percent,
+      type = "l", lty = 2,
+      col = 10)
+lines(t11$year,                             # Draw second time series
+      t11$percent,
+      type = "l", lty = 2,
+      col = 11)
+lines(t12$year,                             # Draw second time series
+      t11$percent,
+      type = "l", lty = 2,
+      col = 12)
+legend("bottomleft",c("t1","t2","t3","t4","t5","t6","t7","t8","t9","t10","t11", "t12"),lty = 4, col = 2:12, pch=c(1,3), cex = 0.2, title="Data",lwd=5, horiz = TRUE)
+par(xpd=TRUE)
+
+
+# -------------------------------------------------------------------------
+
+doc_topic %>%
+  group_by(document) %>%
+  slice_max(gamma, n = 1) %>%
+  dplyr::count(document) %>%
+  filter(n >= 2)
+
+
+# -------------------------------------------------------------------------
+set.seed(1234)
+doc_class_unique <- doc_topic %>%
+  group_by(document) %>%
+  slice_max(gamma, n = 1) %>%
+  slice_sample(n = 1)
+
+doc_class_unique
+
+
+# -------------------------------------------------------------------------
+# 문서 빈도 구하기
+doc_class_unique %>%
+  dplyr::count(document, sort = T)
+
+
+# -------------------------------------------------------------------------
+top_terms <- term_topic %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 6, with_ties = F) %>%
+  summarise(term = paste(term, collapse = ", "))
+
+top_terms
+
+# 1 관리, 정보, 안전, 환경, 정책, 대구, 과학, 본부, 과장, 산업 
+# 4 행동, 단체, 반대, 행위, 정권, 실제, 정치인, 시민, 요구, 경찰  
+# 5  소개, 관심, 이해, 사랑, 일보, 제작, 온라인, 각종, 언론, 대상 
+# 8 8 친구, 소리, 시절, 세상, 아버지, 순간, 가슴, 가족, 세월, 경험
+
+# -------------------------------------------------------------------------
+count_topic <- news_comment_topic %>%
+  dplyr::count(topic)
+
+count_topic
+
+
+# -------------------------------------------------------------------------
+count_topic_word <- count_topic %>%
+  left_join(top_terms, by = "topic") %>%
+  mutate(topic_name = paste("Topic", topic))
+
+count_topic_word
+
+# -------------------------------------------------------------------------
+### 해당 표를 가지고 토픽의 빈도 수를 측정할 수가 있음! 
+ggplot(count_topic_word,
+       aes(x = reorder(topic_name, n),
+           y = n,
+           fill = topic_name)) +
+  geom_col(show.legend = F) +
+  coord_flip() +
+  
+  geom_text(aes(label = n) ,                # 문서 빈도 표시
+            hjust = -0.2) +                 # 막대 밖에 표시
+  
+  geom_text(aes(label = term),              # 주요 단어 표시
+            hjust = 1.03,                   # 막대 안에 표시
+            col = "white",                  # 색깔
+            fontface = "bold",              # 두껍게
+            family = "nanumgothic") +       # 폰트
+  
+  scale_y_continuous(expand = c(0, 0),      # y축-막대 간격 줄이기
+                     limits = c(0, 820)) +  # y축 범위
+  labs(x = NULL)
+
+
+# 06-5 --------------------------------------------------------------------
+
+comment_topic <- news_comment_topic %>%
+  mutate(키워드 = str_squish(replace_html(키워드))) #%>%
+# arrange(-gamma)
+
+
+
+# -------------------------------------------------------------------------
+### 의문점: 사람, 자신, 마음, 사이, 이름, 사람들     Topic 10: 애매하긴 함! 
+& str_detect(reply, "작품")
+comment_topic %>%
+  filter(topic == 5& str_detect(키워드, "가지")) %>%
+  head(50) %>%
+  pull(키워드)
+
+
+
+
+### 역사적 위인 
+
+###
+# -------------------------------------------------------------------------
+# 연도별 토픽 비율을 확인
+topic_proportion_number <-  news_comment_topic %>%
+  select(id, topic, 키워드, year)
+
+class(topic_proportion_number)
+
+data <- topic_proportion_number %>%
+  group_by(year)
+
+k <- topic_proportion_number %>%
+  group_by(year) %>%
+  summarise(total = sum(n))
+group_by(topic) %>%
+  mutate(prop=n/sum(n))
+
+library(dplyr)
+new <- topic_proportion_number %>%
+  group_by(year) %>%
+  mutate(total_number_year= sum(n)) %>%
+  group_by(topic.add=TRUE) %>%
+  mutate(per=paste0(round(100*n/total_number_year,2),'%'))
+
+library("ggplot2")          
+
+ggplot(new,                            # Draw ggplot2 time series plot
+       aes(x = year,
+           y = per,
+           col = topic)) +
+  ylim(0, 1) +
+  geom_line()
+
+
+
+
+
+
+
+
+topic_proportion_number <- topic_proportion_number %>%
+  mutate( =1 )
+
+library(dplyr)
+dataset <- mutate(topic_proportion_number,
+                  tp = case_when(
+                    topic ==1  ~ 1, 
+                    TRUE ~ NA_real_ # This is for all other values 
+                  ))        
+
+rlang::last_error()
+
+show <- topic_proportion_number %>% 
+  group_by(year) 
+%>% 
+  summarize(nn = sum(n)) %>% 
+  mutate(prop=n/sum(n)
+         
+         
+         
+         
+         
+         library("ggplot2")          
+         
+         ggplot(topic_proportion_number,                            # Draw ggplot2 time series plot
+                aes(x = year,
+                    y = n,
+                    col = topic)) +
+           ylim(0, 10) +
+           geom_line()
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+
+
+
+
