@@ -1,0 +1,314 @@
+```{r setup}
+setwd("C:\\Users\\ULTR\\Desktop\\Text Mining\\Code_n_data\\Code_n_data\\section2")
+
+### 동시출현 네트워크 분석
+
+# 기생충 기사 댓글 불러오기
+library(readr)
+raw_news_comment <- read_csv("example.csv", locale = 
+                               locale(encoding = "EUC-KR")) 
+
+# 전처리
+library(dplyr)
+library(stringr)
+library(textclean)
+
+raw_news_comment <- raw_news_comment %>%
+  filter(str_detect(키워드, "인테스텔라", negate = TRUE)) %>%
+  filter(str_detect(키워드, "린다", negate = TRUE)) %>%
+  filter(str_detect(키워드, "옵스트", negate = TRUE)) %>%
+  filter(str_detect(키워드, "제작자", negate = TRUE)) %>%
+  filter(str_detect(키워드, "본부", negate = TRUE)) %>%
+  filter(str_detect(키워드, "관리", negate = TRUE)) %>%
+  filter(str_detect(키워드, "친구", negate = TRUE)) %>%
+  filter(str_detect(키워드, "소리", negate = TRUE)) %>%
+  filter(str_detect(키워드, "시절", negate = TRUE)) %>%
+  filter(str_detect(키워드, "총장", negate = TRUE)) %>%
+  filter(str_detect(키워드, "과장", negate = TRUE)) %>%
+  filter(str_detect(키워드, "도슨트", negate = TRUE)) %>%
+  filter(str_detect(키워드, "본부", negate = TRUE)) %>%
+  filter(str_detect(키워드, "부장", negate = TRUE)) %>%
+  filter(str_detect(키워드, "과장", negate = TRUE)) %>%
+  filter(str_detect(키워드, "기업", negate = TRUE)) %>%
+  filter(str_detect(키워드, "알림", negate = TRUE)) %>%
+  filter(str_detect(키워드, "행정", negate = TRUE)) %>%
+  filter(str_detect(키워드, "산업", negate = TRUE)) %>%
+  filter(str_detect(키워드, "별세", negate = TRUE)) %>%
+  filter(str_detect(키워드, "영화", negate = TRUE)) %>%
+  filter(str_detect(키워드, "세월호", negate = TRUE)) %>%   # 안중근 학생, 세월호
+  filter(str_detect(키워드, "세월", negate = TRUE)) 
+
+
+news_comment <- raw_news_comment %>%
+  select(인물) %>%
+  mutate(인물 = str_replace_all(인물, "[^가-힣]", " "),
+            키워드 = str_squish(인물),
+            id = row_number())
+
+
+# 형태소 분석기 이용해 품사 기준으로 토큰화--------------------------------------------------------------
+library(tidytext)
+library(KoNLP)
+
+comment_pos <- news_comment %>%
+  unnest_tokens(input = 인물,
+                output = word,
+                token = SimplePos22,
+                drop = F)
+
+comment_pos %>% 
+  select(word, 인물) # 시간 오래 소요
+
+# -------------------------------------------------------------------------
+# 품사별로 행 분리
+library(tidyr)
+comment_pos <- comment_pos %>%
+  separate_rows(word, sep = "[+]")
+
+comment_pos %>% 
+  select(word, 키워드)
+
+# -------------------------------------------------------------------------
+# 명사 추출하기
+library(tidyr)
+noun <- comment_pos %>%
+  filter(str_detect(word, "/n")) %>%
+  mutate(word = str_remove(word, "/.*$"))   # 시간 소요 
+
+
+noun %>%
+  select(word, 키워드)
+
+noun %>%
+  count(word, sort = T)
+
+########## 인물의 경우 noun만 활용하는 것!
+# -------------------------------------------------------------------------
+# 동사, 형용사 추출하기
+pvpa <- comment_pos %>%
+  filter(str_detect(word, "/pv|/pa")) %>%         # "/pv", "/pa" 추출
+  mutate(word = str_replace(word, "/.*$", "다"))  # "/"로 시작 문자를 "다"로 바꾸기
+
+pvpa %>%
+  select(word, 키워드)
+
+
+# -------------------------------------------------------------------------
+pvpa %>%
+  count(word, sort = T)
+
+
+# -------------------------------------------------------------------------
+# 품사 결합 ### 명사만 확인한다는 것에 주의함! 
+comment <- bind_rows(noun) %>%
+  filter(str_count(word) >= 2) %>%
+  arrange(id)
+
+
+comment %>%
+  select(word, 키워드)
+
+######################################
+library(widyr)
+
+pair <- comment %>%
+  pairwise_count(item = word,
+                 feature = id,
+                 sort = T)
+pair    # 같이 사용된 단어가 무엇인지 확인함
+#################################
+
+
+#comment_new <- comment_pos %>%
+#  separate_rows(word, sep = "[+]") %>%
+filter(str_detect(word, "/n|/pv|/pa")) %>%
+  mutate(word = ifelse(str_detect(word, "/pv|/pa"),
+                       str_replace(word, "/.*$", "다"),
+                       str_remove(word, "/.*$"))) %>%
+  filter(str_count(word) >= 2) %>%
+  #  arrange(id)
+  
+  
+  
+  
+  # 05-2 --------------------------------------------------------------------
+
+
+library(tidygraph)
+
+graph_comment <- pair %>%
+  filter(n >= 17) %>% # If n >=, then it contains more than 4115 nodes and 376708 degrees 
+  as_tbl_graph() # Find the adequate parameter such that the graph seems reasonable!
+# 진보는 30, 보수는 20으로 비중을 맞춤
+
+graph_comment         # n이 334개인 경우 노드가 30개로 추려짐
+
+
+# -------------------------------------------------------------------------
+
+library(ggraph)
+
+ggraph(graph_comment) +
+  geom_edge_link() +                 # 엣지
+  geom_node_point() +                # 노드
+  geom_node_text(aes(label = name))  # 텍스트
+
+
+# -------------------------------------------------------------------------
+library(showtext)
+font_add_google(name = "Nanum Gothic", family = "nanumgothic")
+showtext_auto()
+
+
+# -------------------------------------------------------------------------
+set.seed(1234)                              # 난수 고정
+ggraph(graph_comment, layout = "fr") +      # 레이아웃
+  
+  geom_edge_link(color = "gray50",          # 엣지 색깔
+                 alpha = 0.5) +             # 엣지 명암
+  
+  geom_node_point(color = "lightcoral",     # 노드 색깔
+                  size = 5) +               # 노드 크기
+  
+  geom_node_text(aes(label = name),         # 텍스트 표시
+                 repel = T,                 # 노드밖 표시
+                 size = 5,                  # 텍스트 크기
+                 family = "nanumgothic") +  # 폰트
+  
+  theme_graph()                             # 배경 삭제
+
+
+word_network <- function(x) {
+  ggraph(x, layout = "fr") +
+    geom_edge_link(color = "gray50",
+                   alpha = 0.5) +
+    geom_node_point(color = "lightcoral",
+                    size = 5) +
+    geom_node_text(aes(label = name),
+                   repel = T,
+                   size = 5,
+                   family = "nanumgothic") +
+    theme_graph()
+}
+
+
+# 유의어 처리하기
+# 유의어 매체 처리 
+comment <- comment %>%
+  mutate(word = ifelse(str_detect(word, "감독") &
+                         !str_detect(word, "감독상"), "봉준호", word), 
+         word = ifelse(word == "히로부", "이토", word),
+         word = ifelse(word == "히로부미", "이토", word),
+         word = ifelse(word == "신조", "아베", word),
+         word = ifelse(word == "요시히데", "스가", word),
+         word = ifelse(word == "의사", "안중근", word),
+         word = ifelse(word == "선생", "안중근", word),
+         word = ifelse(word == "김좌", "김좌진", word),
+         word = ifelse(word == "김좌", "김좌진", word),
+         word = ifelse(word == "박성", "박성재", word),
+         word = ifelse(word == "김좌", "김좌진", word),
+         word = ifelse(word == "서경", "서경석", word),
+         word = ifelse(word == "최재", "최재형", word),
+         word = ifelse(word == "이승", "이승만", word),
+         word = ifelse(word == "안중근의사숭모회", "안중근", word),
+         word = ifelse(word == "방송인", "윤종신", word),
+         word = ifelse(word == "문재", "문재인", word))
+
+# 단어 동시 출현 빈도 구하기
+pair <- comment %>%
+  pairwise_count(item = word,
+                 feature = id,
+                 sort = T)
+
+# 네트워크 그래프 데이터 만들기
+graph_comment <- pair %>%
+  filter(n >= 15) %>%
+  as_tbl_graph()
+
+# 네트워크 그래프 만들기
+set.seed(1234)
+word_network(graph_comment)
+
+# -------------
+library(tidygraph)
+graph_comment <- pair %>%
+  filter(n >= 15) %>%
+  as_tbl_graph(directed = F) %>%
+  mutate(centrality = centrality_degree(),
+         between = centrality_betweenness(),
+         close = centrality_closeness(),# 연결 중심성
+  group = as.factor(group_infomap()))      # 커뮤니티
+
+graph_comment
+----------
+set.seed(1234)
+--------------------------------------------------
+max.overlaps = Inf
+
+
+
+### 
+# memory.size(max = TRUE)    # OS에서 얻은 최대 메모리 크기 = OS로부터 R이 사용 가능한 메모리
+# memory.size(max = FALSE)   # 현재 사용중인 메모리 크기
+# memory.limit(size = NA)    # 컴퓨터의 최대 메모리 한계치 
+
+# 컴퓨터의 최대 메모리 한계치 약 49GB로 높이기
+#memory.limit(size = 50000)   
+
+
+# 단어 동시 출현 빈도 구하기
+pair <- comment %>%
+  pairwise_count(item = word,
+                 feature = id,
+                 sort = T)
+pair[- grep(" ", pair$item1),] # 빈 행 지우기
+pair[- grep(" ", pair$item2),] # 빈 행 지우기
+pair[- grep("윤호진", pair$item1),] # 이상한 행 지우기
+pair[- grep("가상현", pair$item2),]
+pair[- grep("송성각", pair$item1),]
+pair[- grep("린다", pair$item1),]
+pair[- grep("라이너", pair$item1),]
+pair[- grep("김종덕", pair$item1),]
+pair[- grep("옵스트", pair$item1),]
+pair[- grep("방송인", pair$item1),]
+pair[- grep("인터스텔라", pair$item1),]
+pair[- grep("서울", pair$item1),]
+pair[- grep("인터스텔라", pair$item1),]
+pair[- grep("인터스텔라", pair$item1),]
+
+library(tidygraph)
+
+graph_comment <- pair %>%
+  filter(n >= 1) %>%
+  as_tbl_graph(directed = F) %>%
+  mutate(centrality = centrality_degree(),
+         between = centrality_betweenness_current(),
+         close = centrality_closeness(),
+          group = as.factor(group_infomap()))      # 커뮤니티
+
+graph_comment
+
+### 저장
+graph_comment %>%
+  as_tbl_graph() %>%
+  mutate(centrality = centrality_degree()) %>%
+  write.csv('degree3.csv')
+
+
+set.seed(1234)
+ggraph(graph_comment, layout = "fr") +      # 레이아웃
+  
+  geom_edge_link(color = "gray50",          # 엣지 색깔
+                 alpha = 0.5) +             # 엣지 명암
+  
+  geom_node_point(aes(size = centrality),    # 노드 크기
+                  # color = group),           # 노드 색깔
+                  show.legend = F) +        # 범례 삭제
+  scale_size(range = c(2, 7)) +             # 노드 크기 범위
+  
+  geom_node_text(aes(label = name),         # 텍스트 표시
+                 repel = T,                 # 노드밖 표시
+                 size = 3.6,                  # 텍스트 크기
+                 family = "nanumgothic") +  # 폰트
+  
+  theme_graph()                             # 배경 삭제
