@@ -1,0 +1,94 @@
+? What are the types of missing values
+(1) structurally missing; missing for a logical reason
+						  e.g., an unmarried person do not response to questions about parenting 
+								not all cars have mpg since some are electric vehicles 
+(2) MCAR; missing completely at random so you can rule out the possibility of unoberserved characteristics of data
+		  e.g., some values are ommited due to the error 
+(3) MAR; missing at random so you can fill in the missing values from the predictions based on observed ones.
+		 make a plausible prediction based on the theoretical arguments
+(4) MNAR; missing not at random which is quite challenging since the aforementioned imputation methods are not applicable. 
+
+*** Example below
+*Load Auto training data
+sysuse auto, clear
+*Install user-written package to perform Little's test
+net install "http://www.stata-journal.com/software/sj13-4/st0318.pkg", replace
+
+*** Check the location and patterns of missing values 
+misstable summarize
+misstable patterns, freq
+
+Otherwise you can also apply foreach loops;
+foreach varname in price mpg rep78 trunk weight length {
+	tab1 `varname' if missing(`varname'), missing
+}
+
+* Now we create missing values in 'mpg' and 'length' respectively. 
+*Set random number seed for replication
+set seed 1234 
+? [1] mpg
+*Generate additional missing data
+*Make MPG missing data random
+replace mpg = . if uniform()>0.95
+? [2] length 
+*Make Length missing data a function of trunk and turn
+reg length trunk turn
+predict yhat
+replace length = . if yhat > 210
+drop yhat
+
+*Describe missing values in data
+misstable summarize
+misstable patterns, freq
+*** We have missing values in rep78, mpg and length
+**********************************************************************
+*Initial regression with row deletion of missing values
+reg price length mpg i.rep78 weight 
+estimates store a1
+
+*Missing Completly At Random test for missing variables
+mcartest length mpg rep78 weight
+mcartest mpg weigh
+*** If p < 0.05 then not MCAR and you have to use alternative methods 
+
+*Regression with only MCAR variables
+reg price mpg weight
+estimates store a2
+
+*Regression with column deletion for all missing values
+reg price weight 
+estimates store a3
+
+*Regression with categorical missing values changed to new missing category
+recode rep78 . = 99
+tab rep78
+reg price length mpg i.rep78 weight 
+estimates store a4
+
+*Regression with mean imputation
+su mpg
+replace mpg =  r(mean) if mpg == .
+su mpg
+reg price length mpg i.rep78 weight 
+estimates store a4
+
+*Regression with regression based imputation
+reg length trunk turn
+predict yhat
+su yhat
+su yhat if length == .
+replace length = yhat if length == .
+reg price length mpg i.rep78 weight 
+estimates store a5
+
+*Tabulate all estimates
+esttab a1 a2 a3 a4 a5 , b(0) compress nogap not
+
+? Note: you can use mean imputation, categorical imputation and regression-based imputation 
+
+
+
+
+
+
+
