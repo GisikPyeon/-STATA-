@@ -1,0 +1,142 @@
+/* Ways to import data
+Use https://stattransfer.com/ but the conversion between two dataframes may cause a problem
+with the treatment of missing values, in particular. */ 
+
+? General overview to importing data from other softwares
+	1) Compare descriptive statistics between the softwares
+		Few categories -> check a frequency distribution, Many categories -> mean, sd, min, max 
+		e.g., tab v1 | hist v2, freq | describe v3 
+	2) Examine the distribution of missing values 
+		e.g., tab1 v1-v3, missing | note: syntax such as describe v1-v3 exludes the distribution of missing data 
+	3) Compare the two files
+		e.g., cf data1 data2 | note: a mismatch can be made if the numeric values are identical while the upper and lower characters are different in string variables 
+		e.g., codebook, compact | note: it describes the name, obs, uniquitiy, mean, min and max and label of each variable 
+	If two dataset do not match correctly, it may be 1) the upper/lower characters, 2) missing value (99, 98 or .a, .b) 
+	
+	
+? How can we verify the substantial meaning of each variable? 
+	This process entails 1) value review (a PhD having a lower than undergraduate education history), 
+						 2) missing data review (if a respondent are not asked in the previous question, she may not fill in the latter one)
+						 3) internal consistency review (i.e., the relationship between two responses is logically wrong. 
+														 e.g., a person who did not pursue a tertiary education responses to the wage about the PhD job markets)
+						
+1) value review
+codebook, compact | Does the max and min value make sense? 
+tab v1, missing | Check the distribution of the variable 
+stem v1 | Check the distribution of the variable using a stem-and-leaf plot 
+dotplot v1 |  Check the distribution of the variable using a graph 
+foreach var in v1 v2 v3 {
+	dotplot `var'
+	graph export file-name-`var'.png, replace
+}
+
+
+2) Substantive review 
+The subtantive meaning to which the variable refers should be checked thoroughly e.g., v1(=time) may indicate either 'time elapsed' or 'time right after the bachelors graduation)
+The misspecified variable can contain outliers which may systematically bias the estimated coefficients. 
+To check the outliers resulted from the misspecification, compare the distribution of the two variables using the following syntax;
+*******************************************************
+dotplot v1_fixed v1, ytitle("Meaning", siz(medium)) ///
+xlabel, labsize(medium))
+*******************************************************
+dotplot v2 | note: the frequency of the focal variable e.g., many graduates from Wisconsin-Madision of which the prestigy index was fairly high 
+******************************************************
+Check the link between two variables 
+scatter v1 v2 
+scatter v1 v2, msymbol(circle_hollow) jitter(8) ylabel(, grid) xlabel (, grid) aspectratio(1) *** Grid line over x and y variables with 1:1 ratio
+																							  *** It can speficify the location of the outlying ids such as Wisconsin-Madison
+******************************************************
+Extension to the link between k-variables 		
+local varlist "v1 v2 v3 v4 v5" 
+local nvars: word count `varlist'
+forvalues y_varnum = 1/`nvars' {
+	local y_var : word `y_varnum' of `varlist'
+	local y_lbl: variable label `y_var'
+	label var `y_var' "`y_var': `y_lbl'"
+	local x_start = `y_varnum' + 1
+	forvalues x_varnum = `x_start'/`nvars' {
+		local x_var : word `x_varnum' of `varlist'
+		local x_lbl : variable label `x_var'
+		label var `x_var' "'x_var': `x_lbl'"
+		scatter `y_var' `x_var', msymbol(circle_hollow) jitter(8) ///
+			ylabel(, grid) xlabel(, grid) aspectratio(1)
+		graph export file-name-`y_var'-`x_var'.png, replace
+		label var `x_var' "'x_lbl'"
+	}
+}
+************************************************************																			
+
+3) Missing data review 
+note: Stata classifies .a, .b, .z as missing data with ascending values but some software 9 or 99 as such.
+Create a categorical variable that excludes the missing data by adding v1 <. option 
+																e.g., replace v1 = 5 if v1 > 10 & !missing(v1)
+? Creating a indicator for missing data
+generate v1_missing = missing(v1)
+label var v1_missing "v1 is missing?"
+label def Lismiss 0 0_valid 1 1_valid *** label def X creates a value label X
+label val v1_missing Lismissing *** Assign the label Lismissing to v1_missing
+
+
+? Check for missing values in multiple variables
+foreach varname in v1 v2 v3 {
+	tab1 `varname' if missing(`varname'), missing
+}
+
+? To create a missing value identifier, use clonevar: e.g., clonevar v1_clone = v1 
+
+? Include file for automatically recoding many variables in a similar way. 
+
+4) Consistency in data 
+	(1) assert citation == 0 if publication == 0 | It does not return any result since the condition is correct
+	assert publication == 0 if citation == 0 | Not necessarily correct, so r(9) error pops up. 
+	(2) Alternatively, use tabulate as following;
+	tabulate citiation if publication == 0, missing 
+	(3) compare v1 v2 | test the difference between mean of two variables 
+	(4) gen job_phd = job - phd
+		label var job_phd "job_phd: >0 if better job"
+		inspect job_phd | I assume that the distribution of the variable is centered to the left of zero
+		sort job_phd | Check the job_phd score with descending order with the accompanying values
+		
+/* Principles for generating values */ 
+recode v1 1=1 2/5=0, generate(v1_recoded)
+recode v2 1=1 *=0, generate(v2_recoded) | Change 1 to 1 and the rest of the other to 0
+
+*** Check if the recoded variables are correct out of the randomly selected sample
+set seed 2000
+generate xv1 = int( (runiform()*_N)+ 1)
+label var xv1 "Random numbers from 1 to _N"
+sort v1_recoded
+list v1_recoded v1 if xv1 < 20, clean | Check the value recoding by selecting randomly generated ids 
+
+*** Check the recoded value if log-transformed or square-rooted (e.g., if the original value is negative than the recoded values are missing)
+tab v1 v1_recoded if missing(v1) | missing(v1_recoded)
+
+*** Compress values to reduce the data size 
+use file-name, clear
+compress | data are converted with less size
+
+*** Check duplicating ids
+isid v1 
+isid id panel | check if id is unique across all panels 
+duplicates report id
+duplicates examples id, clean | two observations with the same id
+duplicates examples, clean a  | check if there exist obervations with the same values for all variables 
+
+*** Use data signature: datasignautre set 
+Compare values of v1 and v2 from mydata1.dta in memory to mydata2.dta
+cf v1 v2 using mydata2
+cf _all using mydatat2
+		
+*** tabulate v1 and v1_recoded including missing data 
+tabulate v1 v1_recoded, miss 
+
+*** Merging files 
+merge id using mydata2, sort | Add sort option if not sorted on the id-variable 
+tab1 _merge | Lists the corresponding results if the ids are correponding to each other 
+drop _merge 
+qui compress 
+
+
+
+
+
