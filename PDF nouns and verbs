@@ -1,0 +1,54 @@
+### Read data from PDF files
+
+
+setwd("C:\\Users\\ULTR\\Desktop\\myhope\\Competence")
+
+library(pdftools)
+txt <- pdf_text("merged PDF.pdf")
+
+# Put the text into a dataframe
+library(dplyr)
+text_df <- data_frame(txt)
+
+# Tokenize the data
+library(tidytext)
+
+tidybooks <-text_df %>%
+  unnest_tokens(word, txt)
+
+# Remove stop words
+data(stop_words) # stop_words data are stored in tidytext library
+
+tidybooks <- tidybooks %>%
+  anti_join(stop_words)
+
+# Count the word frequencies of nouns, adjectives and verbs
+tidybooks %>%
+  count(word, sort = TRUE)
+
+# Extract nouns, adjectives and verbs
+library(tidytext)
+library(tidyverse)
+noun <- tidybooks %>%
+  left_join(parts_of_speech) %>%
+  filter(pos %in% c("Noun")) %>%
+  pull(word) %>%
+  unique
+
+noun <- data_frame(noun)
+
+adjective <- tidybooks %>%
+  left_join(parts_of_speech) %>%
+  filter(pos %in% c("Adjective")) %>%
+  pull(word) %>%
+  unique
+
+adjective <- data_frame(adjective)
+
+verb <- tidybooks %>%
+  left_join(parts_of_speech) %>%
+  filter(pos %in% c("Verb (transitive)", "Verb (intransitive)")) %>%
+  pull(word) %>%
+  unique
+
+verb <- data_frame(verb)
