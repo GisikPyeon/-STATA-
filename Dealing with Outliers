@@ -1,0 +1,50 @@
+sysuse auto.dta
+
+*** Outliers in univariate regression
+* Sort in ascending order
+sort v1
+
+* Bot plotting for identifying outliers
+graph box v1
+* Labelling the outlying id
+gen id= _n
+graph box price, mark(1,mlabel(id))
+
+* ssc install extremes; extremes allows the adjustment of the interquantile range
+extremes price returns the lowest and the largest 
+extremes price, iqr(1.5) /* by default the interquantile range is set to 1.5 */
+extremes price, iqr(3)
+extremes price mpg, iqr(3) /* it only returns the extreme values of the first variable */
+
+* Creat a histogram 
+histogram price, frequency /* At which range the value is skewed? */ 
+
+* Spike Plot
+spikeplot price
+
+* Zscore regards values greater or less than 3 sd as outliers
+egen stdprice=std(price)
+* List a value 
+list id if stdprice > 3 
+
+***************************************************************
+* [1] Keep outliers and use non-parametric techniques which are not affected by outliers 
+* [2] Correct errors (e.g., data input error)
+* [3] Winsorizing means changing the value of the outlying ids with the legitimately closest ones
+
+ssc install winsor2
+sum price, detail
+winsor2 price, replace cut(1 99) /* replace the value located at 1 and 99% */
+winsor2 price, replace cut(5 95) /* change the 99% with 95% value */ 
+
+* [4] Delete the value
+winsor2 price, replace cut(5 95) trim /* trim option deletes the outliers */ 
+
+
+
+
+
+
+
+
+
